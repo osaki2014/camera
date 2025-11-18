@@ -229,7 +229,7 @@
       color: #fff;
       z-index: 25;
       display: none;
-      pointer-events: none;  /* ヒントはクリックを通す */
+      pointer-events: none;
     }
     #zoom-hint.visible {
       display: block;
@@ -332,8 +332,12 @@
         <input id="sharpness" type="range" min="0" max="1" step="0.1" value="0">
       </label>
       <label>
-        <input id="ai-fix" type="checkbox">
-        AI補正(簡易)
+        <input id="line-boost" type="checkbox">
+        線・文字くっきり
+      </label>
+      <label>
+        <input id="noise-reduce" type="checkbox">
+        ノイズ軽減（ズーム時のもやもや抑制）
       </label>
 
       <div class="panel-title" style="margin-top:4px;">表示反転</div>
@@ -358,6 +362,7 @@
       </label>
       <div style="margin-top:3px;color:#ccc;">
         ※デフォルトは音声OFFです。<br>
+        ※「線・文字くっきり」「ノイズ軽減」は主に保存画像／録画動画に反映されます。<br>
         ※ブラウザ録画は WebM 形式で保存されます。mp4/mov が必要な場合は外部ツールで変換してください。
       </div>
     </div>
@@ -367,8 +372,8 @@
       <div style="font-weight:600;margin-bottom:4px;">ログ</div>
       <div id="log"></div>
       <div style="margin-top:4px;color:#ccc;">
-        ※ズーム時は、録画・TLもズーム範囲をプレビューと同じ見え方で保存します。<br>
-        ※シャープネス／AI補正は重い場合があります。
+        ※ズーム時は、録画・TLもプレビューと同じ見え方で保存します。<br>
+        ※「線・文字くっきり」はノートやプリント撮影向きです。
       </div>
     </div>
 
@@ -411,7 +416,8 @@
     const exposureSlider = document.getElementById('exposure');
     const colorTempSlider = document.getElementById('color-temp');
     const sharpnessSlider = document.getElementById('sharpness');
-    const aiFixCheckbox = document.getElementById('ai-fix');
+    const lineBoostCheckbox = document.getElementById('line-boost');
+    const noiseReduceCheckbox = document.getElementById('noise-reduce');
     const flipHCheckbox = document.getElementById('flip-h');
     const flipVCheckbox = document.getElementById('flip-v');
     const audioEnabledCheckbox = document.getElementById('audio-enabled');
@@ -470,7 +476,8 @@
       exposure: 0,
       colorTemp: 0,
       sharpness: 0,
-      aiFix: false
+      lineBoost: false,
+      noiseReduce: false
     };
     let videoFilterString = 'brightness(1) contrast(1)';
     let flipH = true;
@@ -607,7 +614,6 @@
 
         btnStartCamera.disabled = true;
 
-        // 権限取得後にカメラ一覧を更新
         await populateCameraList();
       } catch (e) {
         console.error(e);
@@ -720,7 +726,7 @@
       log('手描きレイヤーをクリアしました');
     });
 
-    // ===== フィルタ・反転 =====
+    // ===== フィルタ・反転（プレビュー用） =====
     function updateVideoFilter() {
       const exposureFactor = Math.pow(2, settings.exposure);
       const b = settings.brightness * exposureFactor;
@@ -764,9 +770,13 @@
     sharpnessSlider.addEventListener('input', () => {
       settings.sharpness = parseFloat(sharpnessSlider.value) || 0;
     });
-    aiFixCheckbox.addEventListener('change', () => {
-      settings.aiFix = aiFixCheckbox.checked;
-      log(`AI補正(簡易): ${settings.aiFix ? 'ON' : 'OFF'}`);
+    lineBoostCheckbox.addEventListener('change', () => {
+      settings.lineBoost = lineBoostCheckbox.checked;
+      log(`線・文字くっきり: ${settings.lineBoost ? 'ON' : 'OFF'}`);
+    });
+    noiseReduceCheckbox.addEventListener('change', () => {
+      settings.noiseReduce = noiseReduceCheckbox.checked;
+      log(`ノイズ軽減: ${settings.noiseReduce ? 'ON' : 'OFF'}`);
     });
     flipHCheckbox.addEventListener('change', () => {
       flipH = flipHCheckbox.checked;
@@ -782,18 +792,55 @@
     updateVideoFilter();
     updateVideoFlipPreview();
 
-    // ===== シャープネス =====
-    function applySharpen(amount) {
-      if (amount <= 0) return;
-      const w = compositeCanvas.width;
-      const h = compositeCanvas.height;
-      if (!w || !h) return;
-
-      const img = compositeCtx.getImageData(0, 0, w, h);
+    // ===== 画像後処理 =====
+    function applyDenoiseToImage(img, strength) {
+      if (strength <= 0) return;
+      const w = img.width;
+      const h = img.height;
       const data = img.data;
       const src = new Uint8ClampedArray(data);
 
-      const center = 5 + 4 * amount;
+      // かなり強めの 3x3 ぼかしブレンド
+      const k = strength; // 0〜1
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const idx = (y * w + x) * 4;
+          let r = 0, g = 0, b = 0;
+          for (let ky = -1; ky <= 1; ky++) {
+            for (let kx = -1; kx <= 1; kx++) {
+              const idx2 = ((y + ky) * w + (x + kx)) * 4;
+              r += src[idx2];
+              g += src[idx2 + 1];
+              b += src[idx2 + 2];
+            }
+          }
+          const blurR = r / 9;
+          const blurG = g / 9;
+          const blurB = b / 9;
+          const origR = src[idx];
+          const origG = src[idx + 1];
+          const origB = src[idx + 2];
+
+          data[idx]     = Math.max(0, Math.min(255, origR * (1-k) + blurR * k));
+          data[idx + 1] = Math.max(0, Math.min(255, origG * (1-k) + blurG * k));
+          data[idx + 2] = Math.max(0, Math.min(255, origB * (1-k) + blurB * k));
+          // alpha はそのまま
+        }
+      }
+    }
+
+    function applySharpenToImage(img, amount, lineBoost) {
+      if (amount <= 0) return;
+      const w = img.width;
+      const h = img.height;
+      const data = img.data;
+      const src = new Uint8ClampedArray(data);
+
+      // amount をかなり強めに効かせる
+      const centerBase = lineBoost ? 10 : 5;
+      const gain = lineBoost ? 10 : 4;
+      const center = centerBase + gain * amount;
+
       const kernel = [
         0, -1, 0,
         -1, center, -1,
@@ -819,6 +866,46 @@
           data[idx + 2] = Math.max(0, Math.min(255, b));
         }
       }
+
+      if (lineBoost) {
+        // 線・文字をさらに強調（局所コントラストを大きく）
+        const contrast = 1.4 + 0.6 * amount; // 1.4〜2.0
+        for (let i = 0; i < data.length; i += 4) {
+          let r = data[i], g = data[i+1], b = data[i+2];
+          const yLum = 0.299*r + 0.587*g + 0.114*b;
+          const y2 = 128 + (yLum - 128) * contrast;
+          const ratio = yLum > 0 ? (y2 / yLum) : 1;
+          data[i]   = Math.max(0, Math.min(255, r * ratio));
+          data[i+1] = Math.max(0, Math.min(255, g * ratio));
+          data[i+2] = Math.max(0, Math.min(255, b * ratio));
+        }
+      }
+    }
+
+    function postProcessFrame() {
+      const w = compositeCanvas.width;
+      const h = compositeCanvas.height;
+      if (!w || !h) return;
+
+      const needDenoise = settings.noiseReduce;
+      const sharpFromSlider = settings.sharpness; // 0〜1
+      const extraFromLine = settings.lineBoost ? 0.8 : 0;
+      const sharpAmount = Math.min(1.5, Math.max(0, sharpFromSlider + extraFromLine));
+
+      if (!needDenoise && sharpAmount <= 0) return;
+
+      const img = compositeCtx.getImageData(0, 0, w, h);
+
+      // ズーム時のもやもやをかなり抑える
+      if (needDenoise) {
+        applyDenoiseToImage(img, 0.7); // 強め
+      }
+
+      // シャープ＋線・文字強調
+      if (sharpAmount > 0) {
+        applySharpenToImage(img, sharpAmount, settings.lineBoost);
+      }
+
       compositeCtx.putImageData(img, 0, 0);
     }
 
@@ -839,14 +926,14 @@
 
       // 1. 全面を黒で塗る
       compositeCtx.save();
-      compositeCtx.setTransform(1, 0, 0, 1, 0, 0); // リセット
+      compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
       compositeCtx.fillStyle = 'black';
       compositeCtx.fillRect(0, 0, w, h);
 
-      // 2. 座標系を「CSSピクセル」に合わせる（1単位 = 1CSS px）
-      compositeCtx.scale(dpr, dpr); // 内部px → CSS px
+      // 2. 座標系をCSSピクセルに合わせる
+      compositeCtx.scale(dpr, dpr);
 
-      // 3. zoomRect に応じた cameraInner の transform を再現
+      // 3. ズームに応じて cameraInner の transform を再現
       let s = 1;
       let tx = 0;
       let ty = 0;
@@ -865,12 +952,11 @@
         ty = tty;
       }
 
-      // wrapper(0..Wcss,0..Hcss) 内で cameraInner に transform をかける
       compositeCtx.translate(tx, ty);
       compositeCtx.scale(s, s);
 
-      // 4. CSSの object-fit: cover と同じように動画を描く
-      const s0 = Math.max(Wcss / vw, Hcss / vh);  // カメラ映像 → wrapper への拡大率
+      // 4. object-fit: cover と同じように動画を描画
+      const s0 = Math.max(Wcss / vw, Hcss / vh);
       const vsW = vw * s0;
       const vsH = vh * s0;
       const dx = (Wcss - vsW) / 2;
@@ -879,7 +965,6 @@
       compositeCtx.save();
       compositeCtx.filter = videoFilterString || 'none';
 
-      // 左右・上下反転もここで反映
       let drawTx = dx;
       let drawTy = dy;
       let scaleX = 1;
@@ -895,14 +980,13 @@
 
       compositeCtx.translate(drawTx, drawTy);
       compositeCtx.scale(scaleX, scaleY);
-      compositeCtx.scale(s0, s0); // 実際のカメラ映像 → cover 表示
+      compositeCtx.scale(s0, s0);
 
-      // カメラ映像そのものを描画
       compositeCtx.drawImage(video, 0, 0, vw, vh);
 
       compositeCtx.restore();
 
-      // 5. 手描きレイヤーをそのまま上に重ねる
+      // 5. 手描きレイヤーを重ねる
       compositeCtx.drawImage(
         drawCanvas,
         0, 0, drawCanvas.width, drawCanvas.height,
@@ -911,11 +995,8 @@
 
       compositeCtx.restore();
 
-      // 6. 最後にシャープネス & 簡易AI補正
-      const baseSharp = settings.sharpness;
-      const extra = settings.aiFix ? 0.4 : 0;
-      const amount = Math.min(1, Math.max(0, baseSharp + extra));
-      if (amount > 0) applySharpen(amount);
+      // 6. ノイズ軽減＆線・文字くっきり
+      postProcessFrame();
     }
 
     // ===== 静止画 =====
@@ -927,7 +1008,7 @@
       a.href = url;
       a.download = `snapshot_${ts}.png`;
       a.click();
-      log('静止画をPNGとして保存しました（映像設定・反転・ズーム反映）');
+      log('静止画をPNGとして保存しました（映像設定・反転・ズーム・ノイズ軽減・線くっきり反映）');
     });
 
     // ===== 通常録画 =====
@@ -1103,7 +1184,7 @@
       lastZoomPos = null;
       clearUiCanvas();
       zoomHint.classList.add('visible');
-      drawCanvas.style.pointerEvents = 'none'; // ズーム中は手描きを無効
+      drawCanvas.style.pointerEvents = 'none';
       log('ズーム領域選択モード：映像上をドラッグしてください');
     }
 
@@ -1188,7 +1269,7 @@
       log('ズームを適用しました（録画・TLもこの範囲を保存）');
     }
 
-    // マウスでのズーム（キャプチャフェーズで確実に拾う）
+    // マウスでのズーム
     cameraWrapper.addEventListener('mousedown', (e) => {
       if (!zoomMode) return;
       e.preventDefault();
@@ -1233,8 +1314,6 @@
       e.preventDefault();
       finalizeZoom(null);
     }, { passive: false, capture: true });
-
-    // mouseleave はズームモード解除しない
   </script>
 </body>
 </html>
