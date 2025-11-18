@@ -54,7 +54,6 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
-      /* filter: と transform: はJSから設定 */
     }
     #draw-layer,
     #ui-layer {
@@ -78,6 +77,7 @@
       background: rgba(0,0,0,0.65);
       backdrop-filter: blur(6px);
       z-index: 20;
+      align-items: center;
     }
     .tool-btn {
       width: 32px;
@@ -104,6 +104,12 @@
     }
     .tool-group-sep {
       width: 8px;
+    }
+    .rec-timer {
+      font-size: 11px;
+      min-width: 46px;
+      text-align: center;
+      color: #eee;
     }
 
     /* フローティングパネル共通 */
@@ -159,7 +165,7 @@
       display: none;
     }
 
-    /* ログ・ペンボタン */
+    /* ヘッダ小ボタン */
     #log-toggle,
     #pen-toggle,
     #btn-clear {
@@ -255,12 +261,14 @@
       <!-- 通常動画 -->
       <button id="btn-start-rec" class="tool-btn small" title="動画録画開始" disabled>⏺</button>
       <button id="btn-stop-rec" class="tool-btn small" title="動画録画停止" disabled>⏹</button>
+      <span id="rec-timer" class="rec-timer">00:00</span>
 
       <div class="tool-group-sep"></div>
 
       <!-- タイムラプス -->
       <button id="btn-start-tl" class="tool-btn small" title="TL録画開始" disabled>⏱</button>
       <button id="btn-stop-tl" class="tool-btn small" title="TL録画停止" disabled>⏹</button>
+      <span id="tl-timer" class="rec-timer">00:00</span>
 
       <div class="tool-group-sep"></div>
 
@@ -270,11 +278,11 @@
 
       <div class="tool-group-sep" style="width:12px;"></div>
 
-      <!-- 映像設定アイコン（ズーム解除の右側） -->
+      <!-- 映像設定アイコン -->
       <button id="video-settings-toggle" class="tool-btn small" title="映像設定の表示/非表示">🎚</button>
     </div>
 
-    <!-- 手描き設定パネル（ヘッダー側から開く） -->
+    <!-- 手描き設定パネル -->
     <div id="pen-panel" class="floating-panel">
       <div class="panel-title">手描き設定</div>
       <label>色
@@ -285,7 +293,7 @@
       </label>
     </div>
 
-    <!-- 映像設定＋録画設定パネル（ツールバーの 🎚 から開く） -->
+    <!-- 映像＋録画設定パネル -->
     <div id="video-panel" class="floating-panel">
       <div class="panel-title">録画／タイムラプス設定</div>
       <label>動画FPS
@@ -329,7 +337,7 @@
         上下反転
       </label>
       <div style="margin-top:3px;color:#ccc;">
-        ※反転はプレビュー用です。保存される動画・画像は通常向きのままです。
+        ※この反転・設定はプレビューと保存結果の両方に反映されます。
       </div>
     </div>
 
@@ -378,7 +386,6 @@
     const tlFpsInput = document.getElementById('tl-fps');
     const tlIntervalInput = document.getElementById('tl-interval');
 
-    // 映像設定用
     const brightnessSlider = document.getElementById('brightness');
     const contrastSlider = document.getElementById('contrast');
     const exposureSlider = document.getElementById('exposure');
@@ -392,6 +399,9 @@
     const logPanel = document.getElementById('log-panel');
     const logToggle = document.getElementById('log-toggle');
     const zoomHint = document.getElementById('zoom-hint');
+
+    const recTimerEl = document.getElementById('rec-timer');
+    const tlTimerEl = document.getElementById('tl-timer');
 
     let cameraStream = null;
 
@@ -412,12 +422,18 @@
     let lastTlTime = 0;
     let tlIntervalMs = 500;
 
-    // ズーム関連
-    let zoomMode = false;        // 領域選択モード中か
-    let zoomRect = null;         // {x,y,w,h} wrapper座標
-    let zoomDragStart = null;    // {x,y} wrapper座標
+    // タイマー
+    let recStartTime = null;
+    let tlStartTime = null;
+    let recTimerId = null;
+    let tlTimerId = null;
 
-    // 映像設定の状態
+    // ズーム関連
+    let zoomMode = false;
+    let zoomRect = null;      // {x,y,w,h} wrapper座標
+    let zoomDragStart = null; // {x,y}
+
+    // 映像設定
     const settings = {
       brightness: 1,
       contrast: 1,
@@ -434,6 +450,46 @@
       const now = new Date();
       const time = now.toLocaleTimeString();
       logEl.textContent = `[${time}] ${msg}\n` + logEl.textContent;
+    }
+
+    // mm:ss 形式で経過時間表示
+    function formatTime(ms) {
+      const totalSec = Math.floor(ms / 1000);
+      const m = Math.floor(totalSec / 60);
+      const s = totalSec % 60;
+      return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }
+
+    function startRecTimer() {
+      recStartTime = Date.now();
+      recTimerEl.textContent = '00:00';
+      if (recTimerId) clearInterval(recTimerId);
+      recTimerId = setInterval(() => {
+        const elapsed = Date.now() - recStartTime;
+        recTimerEl.textContent = formatTime(elapsed);
+      }, 500);
+    }
+    function stopRecTimer() {
+      if (recTimerId) {
+        clearInterval(recTimerId);
+        recTimerId = null;
+      }
+    }
+
+    function startTlTimer() {
+      tlStartTime = Date.now();
+      tlTimerEl.textContent = '00:00';
+      if (tlTimerId) clearInterval(tlTimerId);
+      tlTimerId = setInterval(() => {
+        const elapsed = Date.now() - tlStartTime;
+        tlTimerEl.textContent = formatTime(elapsed);
+      }, 500);
+    }
+    function stopTlTimer() {
+      if (tlTimerId) {
+        clearInterval(tlTimerId);
+        tlTimerId = null;
+      }
     }
 
     // ログパネル開閉
@@ -477,7 +533,7 @@
       }
     });
 
-    // ラッパーのサイズに応じてキャンバスを調整
+    // キャンバスサイズ調整
     function resizeCanvases() {
       const rect = cameraWrapper.getBoundingClientRect();
       const width = rect.width;
@@ -570,7 +626,7 @@
       log('手描きレイヤーをクリアしました');
     });
 
-    // ===== フィルタ・反転 =====
+    // ===== フィルタ設定 =====
     function updateVideoFilter() {
       const exposureFactor = Math.pow(2, settings.exposure);
       const b = settings.brightness * exposureFactor;
@@ -588,10 +644,10 @@
       }
 
       videoFilterString = filter;
-      video.style.filter = filter;
+      video.style.filter = filter; // プレビュー用
     }
 
-    function updateVideoFlip() {
+    function updateVideoFlipPreview() {
       const sx = flipH ? -1 : 1;
       const sy = flipV ? -1 : 1;
       video.style.transform = `scaleX(${sx}) scaleY(${sy})`;
@@ -623,18 +679,18 @@
 
     flipHCheckbox.addEventListener('change', () => {
       flipH = flipHCheckbox.checked;
-      updateVideoFlip();
+      updateVideoFlipPreview();
       log(`左右反転: ${flipH ? 'ON' : 'OFF'}`);
     });
     flipVCheckbox.addEventListener('change', () => {
       flipV = flipVCheckbox.checked;
-      updateVideoFlip();
+      updateVideoFlipPreview();
       log(`上下反転: ${flipV ? 'ON' : 'OFF'}`);
     });
 
     // 初期適用
     updateVideoFilter();
-    updateVideoFlip();
+    updateVideoFlipPreview();
 
     // ===== シャープネス =====
     function applySharpen(amount) {
@@ -676,7 +732,7 @@
       compositeCtx.putImageData(img, 0, 0);
     }
 
-    // ===== 合成（ズーム時は黒背景＋比率維持） =====
+    // ===== 合成（フィルタ＋反転も反映） =====
     function drawCompositeFrame() {
       const w = compositeCanvas.width;
       const h = compositeCanvas.height;
@@ -726,21 +782,31 @@
           destX = (w - destW) / 2;
         }
 
+        // 映像（フィルタ＋反転）
         compositeCtx.save();
         compositeCtx.filter = videoFilterString || 'none';
-        // 録画側は反転なし（一般的なカメラと同じ挙動）
-        compositeCtx.drawImage(video, sx2, sy2, sw, sh, destX, destY, destW, destH);
+        compositeCtx.translate(destX + destW / 2, destY + destH / 2);
+        compositeCtx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+        compositeCtx.drawImage(
+          video,
+          sx2, sy2, sw, sh,
+          -destW / 2, -destH / 2, destW, destH
+        );
         compositeCtx.restore();
 
+        // 手描き：反転はかけず、ズーム範囲を同じ場所に貼る
         compositeCtx.drawImage(
           drawCanvas,
           zoomRect.x, zoomRect.y, zoomRect.w, zoomRect.h,
           destX, destY, destW, destH
         );
       } else {
+        // ズームなし：映像全体
         compositeCtx.save();
         compositeCtx.filter = videoFilterString || 'none';
-        compositeCtx.drawImage(video, 0, 0, w, h);
+        compositeCtx.translate(w / 2, h / 2);
+        compositeCtx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+        compositeCtx.drawImage(video, -w / 2, -h / 2, w, h);
         compositeCtx.restore();
 
         compositeCtx.drawImage(drawCanvas, 0, 0, w, h);
@@ -764,8 +830,8 @@
       a.download = `snapshot_${ts}.png`;
       a.click();
       log(zoomRect
-        ? '静止画をPNGとして保存しました（ズーム範囲を比率維持で切り出し）'
-        : '静止画をPNGとして保存しました（全体）');
+        ? '静止画をPNGとして保存しました（ズーム範囲＋映像設定・反転を反映）'
+        : '静止画をPNGとして保存しました（全体＋映像設定・反転を反映）');
     });
 
     // ===== 通常動画録画 =====
@@ -795,7 +861,7 @@
         a.href = url;
         a.download = `record_normal_${ts}.webm`;
         a.click();
-        log('通常動画を保存しました');
+        log('通常動画を保存しました（映像設定・反転を反映）');
       };
 
       const render = () => {
@@ -808,6 +874,7 @@
       btnStartRec.disabled = true;
       btnStopRec.disabled = false;
       btnStartTl.disabled = true;
+      startRecTimer();
       log(`通常録画を開始しました (FPS: ${fps}, ズーム: ${zoomRect ? 'ON' : 'OFF'})`);
     });
 
@@ -819,6 +886,7 @@
       btnStartRec.disabled = false;
       btnStopRec.disabled = true;
       btnStartTl.disabled = false;
+      stopRecTimer();
       log('通常録画を停止しました');
     });
 
@@ -848,7 +916,7 @@
         a.href = url;
         a.download = `record_timelapse_${ts}.webm`;
         a.click();
-        log('タイムラプス動画を保存しました');
+        log('タイムラプス動画を保存しました（映像設定・反転を反映）');
       };
 
       const renderTl = (time) => {
@@ -864,6 +932,7 @@
       btnStartTl.disabled = true;
       btnStopTl.disabled = false;
       btnStartRec.disabled = true;
+      startTlTimer();
       log(`タイムラプス録画を開始しました (録画FPS: ${fps}, 間隔: ${tlIntervalMs}ms, ズーム: ${zoomRect ? 'ON' : 'OFF'})`);
     });
 
@@ -875,6 +944,7 @@
       btnStartTl.disabled = false;
       btnStopTl.disabled = true;
       btnStartRec.disabled = false;
+      stopTlTimer();
       log('タイムラプス録画を停止しました');
     });
 
