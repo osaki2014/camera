@@ -154,6 +154,10 @@
     .floating-panel input[type="range"] {
       width: 130px;
     }
+    .floating-panel select {
+      font-size: 11px;
+      max-width: 150px;
+    }
 
     /* ペンパネル（ヘッダー側） */
     #pen-panel {
@@ -225,7 +229,7 @@
       color: #fff;
       z-index: 25;
       display: none;
-      pointer-events: none;  /* ← ここが重要：ヒントをクリックしても裏側に届く */
+      pointer-events: none;  /* ヒントはクリックを通す */
     }
     #zoom-hint.visible {
       display: block;
@@ -342,6 +346,11 @@
         上下反転
       </label>
 
+      <div class="panel-title" style="margin-top:4px;">カメラ選択</div>
+      <label>カメラ
+        <select id="camera-select" disabled></select>
+      </label>
+
       <div class="panel-title" style="margin-top:4px;">音声</div>
       <label>
         <input id="audio-enabled" type="checkbox">
@@ -406,6 +415,7 @@
     const flipHCheckbox = document.getElementById('flip-h');
     const flipVCheckbox = document.getElementById('flip-v');
     const audioEnabledCheckbox = document.getElementById('audio-enabled');
+    const cameraSelect = document.getElementById('camera-select');
 
     const logEl = document.getElementById('log');
     const logPanel = document.getElementById('log-panel');
@@ -416,6 +426,8 @@
     const tlTimerEl = document.getElementById('tl-timer');
 
     let cameraStream = null;
+    let currentVideoDeviceId = null;
+    let hasInitializedCamera = false;
 
     // 合成用キャンバス
     const compositeCanvas = document.createElement('canvas');
@@ -532,18 +544,59 @@
       }
     });
 
-    // カメラ開始
-    btnStartCamera.addEventListener('click', async () => {
+    // カメラ一覧を埋める
+    async function populateCameraList() {
       try {
-        cameraStream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
-          audio: true
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === 'videoinput');
+        cameraSelect.innerHTML = '';
+
+        videoDevices.forEach((d, idx) => {
+          const opt = document.createElement('option');
+          opt.value = d.deviceId;
+          opt.textContent = d.label || `カメラ ${idx + 1}`;
+          cameraSelect.appendChild(opt);
         });
-        // 初期状態では音声OFF
-        cameraStream.getAudioTracks().forEach(t => t.enabled = false);
+
+        if (!currentVideoDeviceId && videoDevices[0]) {
+          currentVideoDeviceId = videoDevices[0].deviceId;
+        }
+        if (currentVideoDeviceId) {
+          cameraSelect.value = currentVideoDeviceId;
+        }
+
+        cameraSelect.disabled = videoDevices.length <= 1;
+        if (videoDevices.length > 1) {
+          log(`カメラを ${videoDevices.length} 台検出しました。映像設定から切り替えできます。`);
+        }
+      } catch (e) {
+        console.log('enumerateDevices error', e);
+      }
+    }
+
+    // カメラ開始／切替
+    async function initCamera(deviceId = null) {
+      try {
+        if (cameraStream) {
+          cameraStream.getTracks().forEach(t => t.stop());
+        }
+
+        const constraints = {
+          video: deviceId
+            ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+            : { width: { ideal: 1920 }, height: { ideal: 1080 } },
+          audio: true
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        cameraStream = stream;
+        hasInitializedCamera = true;
+
+        // 音声ON/OFF反映
+        cameraStream.getAudioTracks().forEach(t => { t.enabled = audioEnabled; });
 
         video.srcObject = cameraStream;
-        log('カメラを開始しました');
+        log(deviceId ? 'カメラを切り替えました' : 'カメラを開始しました');
 
         video.addEventListener('loadedmetadata', () => {
           resizeCanvases();
@@ -553,9 +606,26 @@
         }, { once: true });
 
         btnStartCamera.disabled = true;
+
+        // 権限取得後にカメラ一覧を更新
+        await populateCameraList();
       } catch (e) {
         console.error(e);
-        log('カメラが許可されませんでした');
+        log('カメラが許可されなかったか、選択したカメラが利用できませんでした');
+      }
+    }
+
+    // 「カメラ開始」ボタン
+    btnStartCamera.addEventListener('click', () => {
+      initCamera(currentVideoDeviceId);
+    });
+
+    // カメラ選択変更
+    cameraSelect.addEventListener('change', () => {
+      const devId = cameraSelect.value;
+      currentVideoDeviceId = devId;
+      if (hasInitializedCamera) {
+        initCamera(devId);
       }
     });
 
@@ -1075,7 +1145,6 @@
     function finalizeZoom(endPosMaybe) {
       const endPos = endPosMaybe || lastZoomPos || zoomDragStart;
       if (!zoomDragStart || !endPos) {
-        // ここではズームモードは解除しない（うっかりクリック対策）
         clearUiCanvas();
         log('ズーム範囲が決定できませんでした。もう一度ドラッグしてください。');
         return;
@@ -1092,7 +1161,6 @@
 
       const minSize = 20;
       if (rw < minSize || rh < minSize) {
-        // 小さすぎるときもズームモードは継続：手書きモードに戻さない
         clearUiCanvas();
         log('選択範囲が小さすぎます。もう一度広めにドラッグしてください。');
         return;
@@ -1157,9 +1225,7 @@
       finalizeZoom(null);
     }, { passive: false, capture: true });
 
-    // ※ mouseleave ではもうズームモードを解除しない（勝手に手描きに戻らないように）
-    // cameraWrapper.addEventListener('mouseleave', () => { ... });
-
+    // mouseleave はズームモード解除しない
   </script>
 </body>
 </html>
