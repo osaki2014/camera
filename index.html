@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>カメラ＋手描き＋ズーム＋映像調整＋撮影</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont;
+      background: #000;
+      color: #fff;
+    }
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    header {
+      padding: 6px 10px;
+      font-size: 13px;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 5;
+      position: relative;
+    }
+    header span.title {
+      font-weight: 600;
+    }
+    #header-right {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    #camera-wrapper {
+      position: relative;
+      flex: 1;
+      background: #000;
+      overflow: hidden;
+    }
+    #camera-inner {
+      position: absolute;
+      inset: 0;
+      transform-origin: 0 0;
+    }
+    #video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      /* filter: と transform: はJSから設定 */
+    }
+    #draw-layer,
+    #ui-layer {
+      position: absolute;
+      inset: 0;
+    }
+    #ui-layer {
+      pointer-events: none;
+    }
+
+    /* 下のツールバー */
+    #toolbar {
+      position: fixed;
+      left: 50%;
+      bottom: 10px;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.65);
+      backdrop-filter: blur(6px);
+      z-index: 20;
+    }
+    .tool-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.04);
+      color: #fff;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+    }
+    .tool-btn.small {
+      width: 28px;
+      height: 28px;
+      font-size: 14px;
+    }
+    .tool-btn:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+    .tool-group-sep {
+      width: 8px;
+    }
+
+    /* フローティングパネル共通 */
+    .floating-panel {
+      position: fixed;
+      background: rgba(0,0,0,0.8);
+      padding: 6px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      color: #eee;
+      z-index: 25;
+      max-width: 260px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+    }
+    .floating-panel .panel-title {
+      font-weight: 600;
+      margin-bottom: 4px;
+      font-size: 11px;
+    }
+    .floating-panel label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 3px;
+      white-space: nowrap;
+    }
+    .floating-panel input[type="number"] {
+      width: 50px;
+      font-size: 11px;
+    }
+    .floating-panel input[type="color"] {
+      width: 32px;
+      height: 18px;
+      padding: 0;
+      border: none;
+      background: transparent;
+    }
+    .floating-panel input[type="range"] {
+      width: 130px;
+    }
+
+    /* ペンパネル（ヘッダー側） */
+    #pen-panel {
+      top: 36px;
+      right: 10px;
+      display: none;
+    }
+
+    /* 映像設定パネル（右下） */
+    #video-panel {
+      right: 10px;
+      bottom: 60px;
+      display: none;
+    }
+
+    /* ログ・ペンボタン */
+    #log-toggle,
+    #pen-toggle,
+    #btn-clear {
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.06);
+      color: #fff;
+      width: 26px;
+      height: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 15px;
+      padding: 0;
+    }
+
+    /* ログパネル */
+    #log-panel {
+      position: fixed;
+      left: 10px;
+      top: 40px;
+      width: 240px;
+      max-height: 50vh;
+      background: rgba(0,0,0,0.8);
+      border-radius: 8px;
+      padding: 6px;
+      font-size: 11px;
+      color: #eee;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+      z-index: 30;
+      display: none;
+    }
+    #log-panel.open {
+      display: block;
+    }
+    #log {
+      max-height: 40vh;
+      overflow-y: auto;
+      white-space: pre-line;
+    }
+
+    /* ズーム選択中の案内テキスト */
+    #zoom-hint {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.7);
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      color: #fff;
+      z-index: 25;
+      display: none;
+    }
+    #zoom-hint.visible {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <span class="title">カメラ＋手描き＋ズーム＋映像調整＋静止画／動画／TL</span>
+      <div id="header-right">
+        <button id="pen-toggle" title="手描き設定の表示/非表示">✏️</button>
+        <button id="btn-clear" title="手描きクリア">🧹</button>
+        <button id="log-toggle" title="ログ表示／非表示">ℹ️</button>
+      </div>
+    </header>
+
+    <div id="camera-wrapper">
+      <div id="camera-inner">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="draw-layer"></canvas>
+        <canvas id="ui-layer"></canvas>
+      </div>
+    </div>
+
+    <!-- 下のツールバー -->
+    <div id="toolbar">
+      <!-- カメラ -->
+      <button id="btn-start-camera" class="tool-btn" title="カメラ開始">🎦</button>
+
+      <div class="tool-group-sep"></div>
+
+      <!-- 静止画 -->
+      <button id="btn-shot" class="tool-btn" title="写真撮影（PNG）" disabled>📷</button>
+
+      <div class="tool-group-sep"></div>
+
+      <!-- 通常動画 -->
+      <button id="btn-start-rec" class="tool-btn small" title="動画録画開始" disabled>⏺</button>
+      <button id="btn-stop-rec" class="tool-btn small" title="動画録画停止" disabled>⏹</button>
+
+      <div class="tool-group-sep"></div>
+
+      <!-- タイムラプス -->
+      <button id="btn-start-tl" class="tool-btn small" title="TL録画開始" disabled>⏱</button>
+      <button id="btn-stop-tl" class="tool-btn small" title="TL録画停止" disabled>⏹</button>
+
+      <div class="tool-group-sep"></div>
+
+      <!-- ズーム -->
+      <button id="btn-zoom-select" class="tool-btn small" title="ズーム領域を選択">🔍</button>
+      <button id="btn-zoom-reset" class="tool-btn small" title="ズーム解除">🔁</button>
+
+      <div class="tool-group-sep" style="width:12px;"></div>
+
+      <!-- 映像設定アイコン（ズーム解除の右側） -->
+      <button id="video-settings-toggle" class="tool-btn small" title="映像設定の表示/非表示">🎚</button>
+    </div>
+
+    <!-- 手描き設定パネル（ヘッダー側から開く） -->
+    <div id="pen-panel" class="floating-panel">
+      <div class="panel-title">手描き設定</div>
+      <label>色
+        <input type="color" id="pen-color" value="#ff0000">
+      </label>
+      <label>太さ
+        <input type="number" id="pen-size" min="1" max="40" value="5">
+      </label>
+    </div>
+
+    <!-- 映像設定＋録画設定パネル（ツールバーの 🎚 から開く） -->
+    <div id="video-panel" class="floating-panel">
+      <div class="panel-title">録画／タイムラプス設定</div>
+      <label>動画FPS
+        <input type="number" id="video-fps" min="1" max="60" value="30">
+      </label>
+      <label>TL-FPS
+        <input type="number" id="tl-fps" min="1" max="60" value="10">
+      </label>
+      <label>TL間隔(ms)
+        <input type="number" id="tl-interval" min="100" value="500">
+      </label>
+
+      <div class="panel-title" style="margin-top:4px;">映像設定</div>
+      <label>明るさ
+        <input id="brightness" type="range" min="0.2" max="2" step="0.01" value="1">
+      </label>
+      <label>コントラスト
+        <input id="contrast" type="range" min="0.5" max="2" step="0.01" value="1">
+      </label>
+      <label>露出
+        <input id="exposure" type="range" min="-2" max="2" step="0.1" value="0">
+      </label>
+      <label>色温度
+        <input id="color-temp" type="range" min="-1" max="1" step="0.1" value="0">
+      </label>
+      <label>シャープ
+        <input id="sharpness" type="range" min="0" max="1" step="0.1" value="0">
+      </label>
+      <label>
+        <input id="ai-fix" type="checkbox">
+        AI補正(簡易)
+      </label>
+
+      <div class="panel-title" style="margin-top:4px;">表示反転</div>
+      <label>
+        <input id="flip-h" type="checkbox" checked>
+        左右反転（ミラー）
+      </label>
+      <label>
+        <input id="flip-v" type="checkbox">
+        上下反転
+      </label>
+      <div style="margin-top:3px;color:#ccc;">
+        ※反転はプレビュー用です。保存される動画・画像は通常向きのままです。
+      </div>
+    </div>
+
+    <!-- ログパネル -->
+    <div id="log-panel">
+      <div style="font-weight:600;margin-bottom:4px;">ログ</div>
+      <div id="log"></div>
+      <div style="margin-top:4px;color:#ccc;">
+        ※ズーム時は、録画・TLもズーム範囲を比率維持で切り出し、余白は黒になります。<br>
+        ※シャープネス／AI補正は重い場合があります。
+      </div>
+    </div>
+
+    <!-- ズーム選択中のヒント -->
+    <div id="zoom-hint">ズームしたい範囲をドラッグで指定</div>
+  </div>
+
+  <script>
+    const video = document.getElementById('video');
+    const drawCanvas = document.getElementById('draw-layer');
+    const drawCtx = drawCanvas.getContext('2d');
+    const uiCanvas = document.getElementById('ui-layer');
+    const uiCtx = uiCanvas.getContext('2d');
+    const cameraWrapper = document.getElementById('camera-wrapper');
+    const cameraInner = document.getElementById('camera-inner');
+
+    const btnStartCamera = document.getElementById('btn-start-camera');
+    const btnClear = document.getElementById('btn-clear');
+    const btnShot = document.getElementById('btn-shot');
+    const btnStartRec = document.getElementById('btn-start-rec');
+    const btnStopRec = document.getElementById('btn-stop-rec');
+    const btnStartTl = document.getElementById('btn-start-tl');
+    const btnStopTl = document.getElementById('btn-stop-tl');
+    const btnZoomSelect = document.getElementById('btn-zoom-select');
+    const btnZoomReset = document.getElementById('btn-zoom-reset');
+    const videoSettingsToggle = document.getElementById('video-settings-toggle');
+
+    const penToggle = document.getElementById('pen-toggle');
+    const penPanel = document.getElementById('pen-panel');
+
+    const videoPanel = document.getElementById('video-panel');
+
+    const penColorInput = document.getElementById('pen-color');
+    const penSizeInput = document.getElementById('pen-size');
+    const videoFpsInput = document.getElementById('video-fps');
+    const tlFpsInput = document.getElementById('tl-fps');
+    const tlIntervalInput = document.getElementById('tl-interval');
+
+    // 映像設定用
+    const brightnessSlider = document.getElementById('brightness');
+    const contrastSlider = document.getElementById('contrast');
+    const exposureSlider = document.getElementById('exposure');
+    const colorTempSlider = document.getElementById('color-temp');
+    const sharpnessSlider = document.getElementById('sharpness');
+    const aiFixCheckbox = document.getElementById('ai-fix');
+    const flipHCheckbox = document.getElementById('flip-h');
+    const flipVCheckbox = document.getElementById('flip-v');
+
+    const logEl = document.getElementById('log');
+    const logPanel = document.getElementById('log-panel');
+    const logToggle = document.getElementById('log-toggle');
+    const zoomHint = document.getElementById('zoom-hint');
+
+    let cameraStream = null;
+
+    // 合成用キャンバス（撮影・録画用）
+    const compositeCanvas = document.createElement('canvas');
+    const compositeCtx = compositeCanvas.getContext('2d');
+
+    // 手描き状態
+    let isDrawing = false;
+    let lastX = 0;
+    let lastY = 0;
+
+    // 録画関連
+    let recorder = null;
+    let recordedChunks = [];
+    let recordingMode = null; // "normal" or "timelapse"
+    let animationId = null;
+    let lastTlTime = 0;
+    let tlIntervalMs = 500;
+
+    // ズーム関連
+    let zoomMode = false;        // 領域選択モード中か
+    let zoomRect = null;         // {x,y,w,h} wrapper座標
+    let zoomDragStart = null;    // {x,y} wrapper座標
+
+    // 映像設定の状態
+    const settings = {
+      brightness: 1,
+      contrast: 1,
+      exposure: 0,
+      colorTemp: 0,
+      sharpness: 0,
+      aiFix: false
+    };
+    let videoFilterString = 'brightness(1) contrast(1)';
+    let flipH = true;  // デフォルト：左右反転ON
+    let flipV = false;
+
+    function log(msg) {
+      const now = new Date();
+      const time = now.toLocaleTimeString();
+      logEl.textContent = `[${time}] ${msg}\n` + logEl.textContent;
+    }
+
+    // ログパネル開閉
+    logToggle.addEventListener('click', () => {
+      logPanel.classList.toggle('open');
+    });
+
+    // ペンパネル開閉
+    penToggle.addEventListener('click', () => {
+      const visible = penPanel.style.display === 'block';
+      penPanel.style.display = visible ? 'none' : 'block';
+    });
+
+    // 映像設定パネル開閉
+    videoSettingsToggle.addEventListener('click', () => {
+      const visible = videoPanel.style.display === 'block';
+      videoPanel.style.display = visible ? 'none' : 'block';
+    });
+
+    // カメラ開始
+    btnStartCamera.addEventListener('click', async () => {
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true
+        });
+        video.srcObject = cameraStream;
+        log('カメラを開始しました');
+
+        video.addEventListener('loadedmetadata', () => {
+          resizeCanvases();
+          btnShot.disabled = false;
+          btnStartRec.disabled = false;
+          btnStartTl.disabled = false;
+        }, { once: true });
+
+        btnStartCamera.disabled = true;
+      } catch (e) {
+        console.error(e);
+        log('カメラが許可されませんでした');
+      }
+    });
+
+    // ラッパーのサイズに応じてキャンバスを調整
+    function resizeCanvases() {
+      const rect = cameraWrapper.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+
+      drawCanvas.width = width;
+      drawCanvas.height = height;
+      uiCanvas.width = width;
+      uiCanvas.height = height;
+
+      compositeCanvas.width = width;
+      compositeCanvas.height = height;
+
+      drawCtx.clearRect(0, 0, width, height);
+      uiCtx.clearRect(0, 0, width, height);
+
+      zoomRect = null;
+      updateZoomTransform();
+
+      log(`キャンバスサイズ: ${width} x ${height}`);
+    }
+
+    window.addEventListener('resize', () => {
+      if (video.videoWidth) {
+        resizeCanvases();
+      }
+    });
+
+    // ===== 手描き =====
+    function getCanvasPos(e) {
+      const rect = drawCanvas.getBoundingClientRect();
+      let clientX, clientY;
+      if (e.touches && e.touches[0]) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+      } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+      }
+      const x = (clientX - rect.left) * (drawCanvas.width / rect.width);
+      const y = (clientY - rect.top) * (drawCanvas.height / rect.height);
+      return { x, y };
+    }
+
+    function startDraw(e) {
+      if (zoomMode) return;
+      e.preventDefault();
+      isDrawing = true;
+      const pos = getCanvasPos(e);
+      lastX = pos.x;
+      lastY = pos.y;
+    }
+
+    function draw(e) {
+      if (!isDrawing || zoomMode) return;
+      e.preventDefault();
+      const pos = getCanvasPos(e);
+      drawCtx.strokeStyle = penColorInput.value;
+      drawCtx.lineWidth = Number(penSizeInput.value) || 3;
+      drawCtx.lineCap = 'round';
+      drawCtx.lineJoin = 'round';
+
+      drawCtx.beginPath();
+      drawCtx.moveTo(lastX, lastY);
+      drawCtx.lineTo(pos.x, pos.y);
+      drawCtx.stroke();
+
+      lastX = pos.x;
+      lastY = pos.y;
+    }
+
+    function endDraw(e) {
+      if (!isDrawing) return;
+      e.preventDefault();
+      isDrawing = false;
+    }
+
+    drawCanvas.addEventListener('mousedown', startDraw);
+    drawCanvas.addEventListener('mousemove', draw);
+    drawCanvas.addEventListener('mouseup', endDraw);
+    drawCanvas.addEventListener('mouseleave', endDraw);
+
+    drawCanvas.addEventListener('touchstart', startDraw, { passive: false });
+    drawCanvas.addEventListener('touchmove', draw, { passive: false });
+    drawCanvas.addEventListener('touchend', endDraw, { passive: false });
+    drawCanvas.addEventListener('touchcancel', endDraw, { passive: false });
+
+    btnClear.addEventListener('click', () => {
+      drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+      log('手描きレイヤーをクリアしました');
+    });
+
+    // ===== フィルタ・反転 =====
+    function updateVideoFilter() {
+      const exposureFactor = Math.pow(2, settings.exposure);
+      const b = settings.brightness * exposureFactor;
+      const c = settings.contrast;
+      const t = settings.colorTemp;
+
+      let filter = `brightness(${b}) contrast(${c})`;
+
+      if (t > 0) {
+        const amt = t;
+        filter += ` sepia(${amt}) saturate(${1 + 0.5 * amt}) hue-rotate(-10deg)`;
+      } else if (t < 0) {
+        const amt = -t;
+        filter += ` saturate(${1 - 0.3 * amt}) hue-rotate(${amt * 20}deg)`;
+      }
+
+      videoFilterString = filter;
+      video.style.filter = filter;
+    }
+
+    function updateVideoFlip() {
+      const sx = flipH ? -1 : 1;
+      const sy = flipV ? -1 : 1;
+      video.style.transform = `scaleX(${sx}) scaleY(${sy})`;
+    }
+
+    brightnessSlider.addEventListener('input', () => {
+      settings.brightness = parseFloat(brightnessSlider.value) || 1;
+      updateVideoFilter();
+    });
+    contrastSlider.addEventListener('input', () => {
+      settings.contrast = parseFloat(contrastSlider.value) || 1;
+      updateVideoFilter();
+    });
+    exposureSlider.addEventListener('input', () => {
+      settings.exposure = parseFloat(exposureSlider.value) || 0;
+      updateVideoFilter();
+    });
+    colorTempSlider.addEventListener('input', () => {
+      settings.colorTemp = parseFloat(colorTempSlider.value) || 0;
+      updateVideoFilter();
+    });
+    sharpnessSlider.addEventListener('input', () => {
+      settings.sharpness = parseFloat(sharpnessSlider.value) || 0;
+    });
+    aiFixCheckbox.addEventListener('change', () => {
+      settings.aiFix = aiFixCheckbox.checked;
+      log(`AI補正(簡易): ${settings.aiFix ? 'ON' : 'OFF'}`);
+    });
+
+    flipHCheckbox.addEventListener('change', () => {
+      flipH = flipHCheckbox.checked;
+      updateVideoFlip();
+      log(`左右反転: ${flipH ? 'ON' : 'OFF'}`);
+    });
+    flipVCheckbox.addEventListener('change', () => {
+      flipV = flipVCheckbox.checked;
+      updateVideoFlip();
+      log(`上下反転: ${flipV ? 'ON' : 'OFF'}`);
+    });
+
+    // 初期適用
+    updateVideoFilter();
+    updateVideoFlip();
+
+    // ===== シャープネス =====
+    function applySharpen(amount) {
+      if (amount <= 0) return;
+      const w = compositeCanvas.width;
+      const h = compositeCanvas.height;
+      if (!w || !h) return;
+
+      const img = compositeCtx.getImageData(0, 0, w, h);
+      const data = img.data;
+      const src = new Uint8ClampedArray(data);
+
+      const center = 5 + 4 * amount;
+      const kernel = [
+        0, -1, 0,
+        -1, center, -1,
+        0, -1, 0
+      ];
+
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const idx = (y * w + x) * 4;
+          let r = 0, g = 0, b = 0;
+          let ki = 0;
+          for (let ky = -1; ky <= 1; ky++) {
+            for (let kx = -1; kx <= 1; kx++) {
+              const idx2 = ((y + ky) * w + (x + kx)) * 4;
+              const wgt = kernel[ki++];
+              r += src[idx2] * wgt;
+              g += src[idx2 + 1] * wgt;
+              b += src[idx2 + 2] * wgt;
+            }
+          }
+          data[idx]     = Math.max(0, Math.min(255, r));
+          data[idx + 1] = Math.max(0, Math.min(255, g));
+          data[idx + 2] = Math.max(0, Math.min(255, b));
+        }
+      }
+      compositeCtx.putImageData(img, 0, 0);
+    }
+
+    // ===== 合成（ズーム時は黒背景＋比率維持） =====
+    function drawCompositeFrame() {
+      const w = compositeCanvas.width;
+      const h = compositeCanvas.height;
+      if (!w || !h) return;
+      if (!video.videoWidth || !video.videoHeight) return;
+
+      compositeCtx.fillStyle = 'black';
+      compositeCtx.fillRect(0, 0, w, h);
+
+      if (zoomRect) {
+        const W = cameraWrapper.clientWidth;
+        const H = cameraWrapper.clientHeight;
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+
+        const s = Math.max(W / vw, H / vh);
+        const vsW = vw * s;
+        const vsH = vh * s;
+        const dx = (W - vsW) / 2;
+        const dy = (H - vsH) / 2;
+
+        let sx = (zoomRect.x - dx) / s;
+        let sy = (zoomRect.y - dy) / s;
+        let sw = zoomRect.w / s;
+        let sh = zoomRect.h / s;
+
+        let sx2 = Math.max(0, sx);
+        let sy2 = Math.max(0, sy);
+        let ex = Math.min(vw, sx + sw);
+        let ey = Math.min(vh, sy + sh);
+        sw = ex - sx2;
+        sh = ey - sy2;
+        if (sw <= 0 || sh <= 0) return;
+
+        const srcAspect = sw / sh;
+        const dstAspect = w / h;
+        let destW, destH, destX, destY;
+        if (srcAspect > dstAspect) {
+          destW = w;
+          destH = w / srcAspect;
+          destX = 0;
+          destY = (h - destH) / 2;
+        } else {
+          destH = h;
+          destW = h * srcAspect;
+          destY = 0;
+          destX = (w - destW) / 2;
+        }
+
+        compositeCtx.save();
+        compositeCtx.filter = videoFilterString || 'none';
+        // 録画側は反転なし（一般的なカメラと同じ挙動）
+        compositeCtx.drawImage(video, sx2, sy2, sw, sh, destX, destY, destW, destH);
+        compositeCtx.restore();
+
+        compositeCtx.drawImage(
+          drawCanvas,
+          zoomRect.x, zoomRect.y, zoomRect.w, zoomRect.h,
+          destX, destY, destW, destH
+        );
+      } else {
+        compositeCtx.save();
+        compositeCtx.filter = videoFilterString || 'none';
+        compositeCtx.drawImage(video, 0, 0, w, h);
+        compositeCtx.restore();
+
+        compositeCtx.drawImage(drawCanvas, 0, 0, w, h);
+      }
+
+      const baseSharp = settings.sharpness;
+      const extra = settings.aiFix ? 0.4 : 0;
+      const amount = Math.min(1, Math.max(0, baseSharp + extra));
+      if (amount > 0) {
+        applySharpen(amount);
+      }
+    }
+
+    // ===== 静止画撮影 =====
+    btnShot.addEventListener('click', () => {
+      drawCompositeFrame();
+      const url = compositeCanvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      a.href = url;
+      a.download = `snapshot_${ts}.png`;
+      a.click();
+      log(zoomRect
+        ? '静止画をPNGとして保存しました（ズーム範囲を比率維持で切り出し）'
+        : '静止画をPNGとして保存しました（全体）');
+    });
+
+    // ===== 通常動画録画 =====
+    btnStartRec.addEventListener('click', () => {
+      if (!cameraStream) {
+        log('先にカメラを開始してください');
+        return;
+      }
+      const fps = Number(videoFpsInput.value) || 30;
+
+      const stream = compositeCanvas.captureStream(fps);
+      const audioTracks = cameraStream.getAudioTracks();
+      audioTracks.forEach(t => stream.addTrack(t));
+
+      recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      recordedChunks = [];
+      recordingMode = 'normal';
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordedChunks.push(e.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+        a.href = url;
+        a.download = `record_normal_${ts}.webm`;
+        a.click();
+        log('通常動画を保存しました');
+      };
+
+      const render = () => {
+        drawCompositeFrame();
+        animationId = requestAnimationFrame(render);
+      };
+      render();
+
+      recorder.start();
+      btnStartRec.disabled = true;
+      btnStopRec.disabled = false;
+      btnStartTl.disabled = true;
+      log(`通常録画を開始しました (FPS: ${fps}, ズーム: ${zoomRect ? 'ON' : 'OFF'})`);
+    });
+
+    btnStopRec.addEventListener('click', () => {
+      if (!recorder || recordingMode !== 'normal') return;
+      recorder.stop();
+      cancelAnimationFrame(animationId);
+      animationId = null;
+      btnStartRec.disabled = false;
+      btnStopRec.disabled = true;
+      btnStartTl.disabled = false;
+      log('通常録画を停止しました');
+    });
+
+    // ===== タイムラプス録画 =====
+    btnStartTl.addEventListener('click', () => {
+      if (!cameraStream) {
+        log('先にカメラを開始してください');
+        return;
+      }
+      const fps = Number(tlFpsInput.value) || 10;
+      tlIntervalMs = Number(tlIntervalInput.value) || 500;
+
+      const stream = compositeCanvas.captureStream(fps);
+      recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      recordedChunks = [];
+      recordingMode = 'timelapse';
+      lastTlTime = performance.now();
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordedChunks.push(e.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+        a.href = url;
+        a.download = `record_timelapse_${ts}.webm`;
+        a.click();
+        log('タイムラプス動画を保存しました');
+      };
+
+      const renderTl = (time) => {
+        if (time - lastTlTime >= tlIntervalMs) {
+          drawCompositeFrame();
+          lastTlTime = time;
+        }
+        animationId = requestAnimationFrame(renderTl);
+      };
+      animationId = requestAnimationFrame(renderTl);
+
+      recorder.start();
+      btnStartTl.disabled = true;
+      btnStopTl.disabled = false;
+      btnStartRec.disabled = true;
+      log(`タイムラプス録画を開始しました (録画FPS: ${fps}, 間隔: ${tlIntervalMs}ms, ズーム: ${zoomRect ? 'ON' : 'OFF'})`);
+    });
+
+    btnStopTl.addEventListener('click', () => {
+      if (!recorder || recordingMode !== 'timelapse') return;
+      recorder.stop();
+      cancelAnimationFrame(animationId);
+      animationId = null;
+      btnStartTl.disabled = false;
+      btnStopTl.disabled = true;
+      btnStartRec.disabled = false;
+      log('タイムラプス録画を停止しました');
+    });
+
+    // ===== ズーム機能（表示＋録画に反映） =====
+    function updateZoomTransform() {
+      if (!zoomRect) {
+        cameraInner.style.transform = 'translate(0px, 0px) scale(1)';
+        return;
+      }
+      const W = cameraWrapper.clientWidth;
+      const H = cameraWrapper.clientHeight;
+      if (!W || !H) return;
+
+      const r = zoomRect;
+      const s = Math.max(W / r.w, H / r.h);
+
+      const cx = r.x + r.w / 2;
+      const cy = r.y + r.h / 2;
+      const CwX = W / 2;
+      const CwY = H / 2;
+
+      const tx = CwX - s * cx;
+      const ty = CwY - s * cy;
+
+      cameraInner.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
+    }
+
+    function getWrapperPos(e) {
+      const rect = cameraWrapper.getBoundingClientRect();
+      return {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      };
+    }
+
+    function clearUiCanvas() {
+      uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
+    }
+
+    // ズーム領域選択開始
+    btnZoomSelect.addEventListener('click', () => {
+      if (!video.videoWidth) {
+        log('カメラ起動後にズームできます');
+        return;
+      }
+      zoomMode = true;
+      zoomDragStart = null;
+      clearUiCanvas();
+      zoomHint.classList.add('visible');
+      log('ズーム領域選択モード：映像上をドラッグしてください');
+    });
+
+    // ズーム解除
+    btnZoomReset.addEventListener('click', () => {
+      zoomRect = null;
+      zoomMode = false;
+      zoomDragStart = null;
+      clearUiCanvas();
+      zoomHint.classList.remove('visible');
+      updateZoomTransform();
+      log('ズームを解除しました');
+    });
+
+    // マウス操作でズーム領域選択
+    cameraWrapper.addEventListener('mousedown', (e) => {
+      if (!zoomMode) return;
+      const pos = getWrapperPos(e);
+      zoomDragStart = pos;
+    });
+
+    cameraWrapper.addEventListener('mousemove', (e) => {
+      if (!zoomMode || !zoomDragStart) return;
+      const pos = getWrapperPos(e);
+      clearUiCanvas();
+      uiCtx.strokeStyle = '#00ff88';
+      uiCtx.lineWidth = 2;
+      uiCtx.setLineDash([6, 4]);
+      uiCtx.strokeRect(
+        zoomDragStart.x,
+        zoomDragStart.y,
+        pos.x - zoomDragStart.x,
+        pos.y - zoomDragStart.y
+      );
+      uiCtx.setLineDash([]);
+    });
+
+    cameraWrapper.addEventListener('mouseup', (e) => {
+      if (!zoomMode || !zoomDragStart) return;
+      const pos = getWrapperPos(e);
+      const x0 = zoomDragStart.x;
+      const y0 = zoomDragStart.y;
+      const x1 = pos.x;
+      const y1 = pos.y;
+      const rx = Math.min(x0, x1);
+      const ry = Math.min(y0, y1);
+      const rw = Math.abs(x1 - x0);
+      const rh = Math.abs(y1 - y0);
+
+      clearUiCanvas();
+      zoomHint.classList.remove('visible');
+      zoomMode = false;
+      zoomDragStart = null;
+
+      const minSize = 20;
+      if (rw < minSize || rh < minSize) {
+        log('選択範囲が小さすぎるためズームをキャンセルしました');
+        return;
+      }
+
+      const W = cameraWrapper.clientWidth;
+      const H = cameraWrapper.clientHeight;
+      const rxClamped = Math.max(0, Math.min(rx, W));
+      const ryClamped = Math.max(0, Math.min(ry, H));
+      const rwClamped = Math.min(rw, W - rxClamped);
+      const rhClamped = Math.min(rh, H - ryClamped);
+
+      zoomRect = {
+        x: rxClamped,
+        y: ryClamped,
+        w: rwClamped,
+        h: rhClamped
+      };
+      updateZoomTransform();
+      log('ズームを適用しました（録画・TLもこの範囲を比率維持で保存）');
+    });
+
+    cameraWrapper.addEventListener('mouseleave', () => {
+      if (!zoomMode) return;
+      clearUiCanvas();
+      zoomHint.classList.remove('visible');
+      zoomMode = false;
+      zoomDragStart = null;
+    });
+  </script>
+</body>
+</html>
