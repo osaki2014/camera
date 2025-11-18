@@ -225,6 +225,7 @@
       color: #fff;
       z-index: 25;
       display: none;
+      pointer-events: none;  /* ← ここが重要：ヒントをクリックしても裏側に届く */
     }
     #zoom-hint.visible {
       display: block;
@@ -1074,8 +1075,9 @@
     function finalizeZoom(endPosMaybe) {
       const endPos = endPosMaybe || lastZoomPos || zoomDragStart;
       if (!zoomDragStart || !endPos) {
-        exitZoomMode();
-        log('ズームをキャンセルしました');
+        // ここではズームモードは解除しない（うっかりクリック対策）
+        clearUiCanvas();
+        log('ズーム範囲が決定できませんでした。もう一度ドラッグしてください。');
         return;
       }
 
@@ -1090,8 +1092,9 @@
 
       const minSize = 20;
       if (rw < minSize || rh < minSize) {
-        exitZoomMode();
-        log('選択範囲が小さすぎるためズームをキャンセルしました');
+        // 小さすぎるときもズームモードは継続：手書きモードに戻さない
+        clearUiCanvas();
+        log('選択範囲が小さすぎます。もう一度広めにドラッグしてください。');
         return;
       }
 
@@ -1154,10 +1157,9 @@
       finalizeZoom(null);
     }, { passive: false, capture: true });
 
-    cameraWrapper.addEventListener('mouseleave', () => {
-      if (!zoomMode) return;
-      exitZoomMode();
-    });
+    // ※ mouseleave ではもうズームモードを解除しない（勝手に手描きに戻らないように）
+    // cameraWrapper.addEventListener('mouseleave', () => { ... });
+
   </script>
 </body>
 </html>
