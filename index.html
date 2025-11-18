@@ -367,7 +367,7 @@
       <div style="font-weight:600;margin-bottom:4px;">ログ</div>
       <div id="log"></div>
       <div style="margin-top:4px;color:#ccc;">
-        ※ズーム時は、録画・TLもズーム範囲を比率維持で切り出し、余白は黒になります。<br>
+        ※ズーム時は、録画・TLもズーム範囲をプレビューと同じ見え方で保存します。<br>
         ※シャープネス／AI補正は重い場合があります。
       </div>
     </div>
@@ -822,87 +822,96 @@
       compositeCtx.putImageData(img, 0, 0);
     }
 
-    // ===== 合成 =====
+    // ===== 合成（プレビューと同じ変換をそのまま再現） =====
     function drawCompositeFrame() {
       const w = compositeCanvas.width;
       const h = compositeCanvas.height;
       if (!w || !h) return;
       if (!video.videoWidth || !video.videoHeight) return;
 
+      const Wcss = cameraWrapper.clientWidth;
+      const Hcss = cameraWrapper.clientHeight;
+      if (!Wcss || !Hcss) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+
+      // 1. 全面を黒で塗る
+      compositeCtx.save();
+      compositeCtx.setTransform(1, 0, 0, 1, 0, 0); // リセット
       compositeCtx.fillStyle = 'black';
       compositeCtx.fillRect(0, 0, w, h);
 
-      const Wcss = cameraWrapper.clientWidth;
-      const Hcss = cameraWrapper.clientHeight;
-      const dpr = window.devicePixelRatio || 1;
+      // 2. 座標系を「CSSピクセル」に合わせる（1単位 = 1CSS px）
+      compositeCtx.scale(dpr, dpr); // 内部px → CSS px
+
+      // 3. zoomRect に応じた cameraInner の transform を再現
+      let s = 1;
+      let tx = 0;
+      let ty = 0;
 
       if (zoomRect) {
-        const vw = video.videoWidth;
-        const vh = video.videoHeight;
-        const s = Math.max(Wcss / vw, Hcss / vh);
-        const vsW = vw * s;
-        const vsH = vh * s;
-        const dx = (Wcss - vsW) / 2;
-        const dy = (Hcss - vsH) / 2;
-
-        let sx = (zoomRect.x - dx) / s;
-        let sy = (zoomRect.y - dy) / s;
-        let sw = zoomRect.w / s;
-        let sh = zoomRect.h / s;
-
-        let sx2 = Math.max(0, sx);
-        let sy2 = Math.max(0, sy);
-        let ex = Math.min(vw, sx + sw);
-        let ey = Math.min(vh, sy + sh);
-        sw = ex - sx2;
-        sh = ey - sy2;
-        if (sw <= 0 || sh <= 0) return;
-
-        const srcAspect = sw / sh;
-        const dstAspect = w / h;
-        let destW, destH, destX, destY;
-        if (srcAspect > dstAspect) {
-          destW = w;
-          destH = w / srcAspect;
-          destX = 0;
-          destY = (h - destH) / 2;
-        } else {
-          destH = h;
-          destW = h * srcAspect;
-          destY = 0;
-          destX = (w - destW) / 2;
-        }
-
-        compositeCtx.save();
-        compositeCtx.filter = videoFilterString || 'none';
-        compositeCtx.translate(destX + destW / 2, destY + destH / 2);
-        compositeCtx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
-        compositeCtx.drawImage(
-          video,
-          sx2, sy2, sw, sh,
-          -destW / 2, -destH / 2, destW, destH
-        );
-        compositeCtx.restore();
-
-        compositeCtx.drawImage(
-          drawCanvas,
-          zoomRect.x * dpr,
-          zoomRect.y * dpr,
-          zoomRect.w * dpr,
-          zoomRect.h * dpr,
-          destX, destY, destW, destH
-        );
-      } else {
-        compositeCtx.save();
-        compositeCtx.filter = videoFilterString || 'none';
-        compositeCtx.translate(w / 2, h / 2);
-        compositeCtx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
-        compositeCtx.drawImage(video, -w / 2, -h / 2, w, h);
-        compositeCtx.restore();
-
-        compositeCtx.drawImage(drawCanvas, 0, 0, w, h);
+        const r = zoomRect;
+        const sZoom = Math.max(Wcss / r.w, Hcss / r.h);
+        const cx = r.x + r.w / 2;
+        const cy = r.y + r.h / 2;
+        const CwX = Wcss / 2;
+        const CwY = Hcss / 2;
+        const ttx = CwX - sZoom * cx;
+        const tty = CwY - sZoom * cy;
+        s = sZoom;
+        tx = ttx;
+        ty = tty;
       }
 
+      // wrapper(0..Wcss,0..Hcss) 内で cameraInner に transform をかける
+      compositeCtx.translate(tx, ty);
+      compositeCtx.scale(s, s);
+
+      // 4. CSSの object-fit: cover と同じように動画を描く
+      const s0 = Math.max(Wcss / vw, Hcss / vh);  // カメラ映像 → wrapper への拡大率
+      const vsW = vw * s0;
+      const vsH = vh * s0;
+      const dx = (Wcss - vsW) / 2;
+      const dy = (Hcss - vsH) / 2;
+
+      compositeCtx.save();
+      compositeCtx.filter = videoFilterString || 'none';
+
+      // 左右・上下反転もここで反映
+      let drawTx = dx;
+      let drawTy = dy;
+      let scaleX = 1;
+      let scaleY = 1;
+      if (flipH) {
+        drawTx = dx + vsW;
+        scaleX = -1;
+      }
+      if (flipV) {
+        drawTy = dy + vsH;
+        scaleY = -1;
+      }
+
+      compositeCtx.translate(drawTx, drawTy);
+      compositeCtx.scale(scaleX, scaleY);
+      compositeCtx.scale(s0, s0); // 実際のカメラ映像 → cover 表示
+
+      // カメラ映像そのものを描画
+      compositeCtx.drawImage(video, 0, 0, vw, vh);
+
+      compositeCtx.restore();
+
+      // 5. 手描きレイヤーをそのまま上に重ねる
+      compositeCtx.drawImage(
+        drawCanvas,
+        0, 0, drawCanvas.width, drawCanvas.height,
+        0, 0, Wcss, Hcss
+      );
+
+      compositeCtx.restore();
+
+      // 6. 最後にシャープネス & 簡易AI補正
       const baseSharp = settings.sharpness;
       const extra = settings.aiFix ? 0.4 : 0;
       const amount = Math.min(1, Math.max(0, baseSharp + extra));
@@ -1176,7 +1185,7 @@
       zoomRect = { x: rxClamped, y: ryClamped, w: rwClamped, h: rhClamped };
       updateZoomTransform();
       exitZoomMode();
-      log('ズームを適用しました（録画・TLもこの範囲を比率維持で保存）');
+      log('ズームを適用しました（録画・TLもこの範囲を保存）');
     }
 
     // マウスでのズーム（キャプチャフェーズで確実に拾う）
