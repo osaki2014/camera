@@ -17,11 +17,11 @@
       display: flex;
       flex-direction: column;
       height: 100vh;
-      overflow: hidden;
+      /* overflow: hidden;  ← 回転時にヘッダが消える原因になり得るので外す */
     }
     header {
-      padding: 6px 10px;
-      font-size: 13px;
+      padding: 8px 12px;
+      font-size: 14px;
       background: rgba(0,0,0,0.7);
       display: flex;
       justify-content: space-between;
@@ -34,7 +34,7 @@
     }
     #header-right {
       display: flex;
-      gap: 6px;
+      gap: 8px;
       align-items: center;
     }
     #camera-wrapper {
@@ -72,25 +72,25 @@
     #toolbar {
       position: fixed;
       left: 50%;
-      bottom: 10px;
+      bottom: 12px;
       transform: translateX(-50%);
       display: flex;
-      gap: 6px;
-      padding: 4px 8px;
+      gap: 10px;
+      padding: 8px 14px;
       border-radius: 999px;
-      background: rgba(0,0,0,0.65);
+      background: rgba(0,0,0,0.75);
       backdrop-filter: blur(6px);
       z-index: 20;
       align-items: center;
     }
     .tool-btn {
-      width: 32px;
-      height: 32px;
+      width: 64px;          /* 元 32 → 約2倍 */
+      height: 64px;
       border-radius: 50%;
-      border: 1px solid rgba(255,255,255,0.2);
-      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.25);
+      background: rgba(255,255,255,0.06);
       color: #fff;
-      font-size: 16px;
+      font-size: 26px;      /* アイコン絵文字を大きく */
       display: flex;
       align-items: center;
       justify-content: center;
@@ -98,20 +98,20 @@
       padding: 0;
     }
     .tool-btn.small {
-      width: 28px;
-      height: 28px;
-      font-size: 14px;
+      width: 52px;          /* 元 28 */
+      height: 52px;
+      font-size: 22px;
     }
     .tool-btn:disabled {
-      opacity: 0.3;
+      opacity: 0.35;
       cursor: default;
     }
     .tool-group-sep {
-      width: 8px;
+      width: 10px;
     }
     .rec-timer {
-      font-size: 11px;
-      min-width: 46px;
+      font-size: 13px;
+      min-width: 52px;
       text-align: center;
       color: #eee;
     }
@@ -161,7 +161,7 @@
 
     /* ペンパネル（ヘッダー側） */
     #pen-panel {
-      top: 36px;
+      top: 48px;
       right: 10px;
       display: none;
     }
@@ -169,25 +169,25 @@
     /* 映像設定パネル（右下） */
     #video-panel {
       right: 10px;
-      bottom: 60px;
+      bottom: 84px;
       display: none;
     }
 
-    /* ヘッダ小ボタン */
+    /* ヘッダ小ボタン（ここも少し大きく） */
     #log-toggle,
     #pen-toggle,
     #btn-clear {
       border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.2);
-      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.25);
+      background: rgba(255,255,255,0.10);
       color: #fff;
-      width: 26px;
-      height: 26px;
+      width: 40px;      /* 元 26 → 大きく */
+      height: 40px;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      font-size: 15px;
+      font-size: 20px;
       padding: 0;
     }
 
@@ -195,8 +195,8 @@
     #log-panel {
       position: fixed;
       left: 10px;
-      top: 40px;
-      width: 240px;
+      top: 56px;
+      width: 260px;
       max-height: 50vh;
       background: rgba(0,0,0,0.8);
       border-radius: 8px;
@@ -285,7 +285,7 @@
       <button id="btn-zoom-select" class="tool-btn small" title="ズーム領域を選択">🔍</button>
       <button id="btn-zoom-reset" class="tool-btn small" title="ズーム解除">🔁</button>
 
-      <div class="tool-group-sep" style="width:12px;"></div>
+      <div class="tool-group-sep" style="width:16px;"></div>
 
       <!-- 映像設定アイコン -->
       <button id="video-settings-toggle" class="tool-btn small" title="映像設定の表示/非表示">🎚</button>
@@ -439,7 +439,6 @@
     const compositeCanvas = document.createElement('canvas');
     const compositeCtx = compositeCanvas.getContext('2d');
 
-    // 少しシャープめに
     drawCtx.imageSmoothingEnabled = false;
     uiCtx.imageSmoothingEnabled = false;
     compositeCtx.imageSmoothingEnabled = false;
@@ -465,9 +464,9 @@
 
     // ズーム関連
     let zoomMode = false;
-    let zoomRect = null;         // {x,y,w,h} in wrapper CSS coords
-    let zoomDragStart = null;    // {x,y}
-    let lastZoomPos = null;      // {x,y}
+    let zoomRect = null;
+    let zoomDragStart = null;
+    let lastZoomPos = null;
 
     // 映像設定
     const settings = {
@@ -551,7 +550,7 @@
       }
     });
 
-    // カメラ一覧を埋める
+    // カメラ一覧
     async function populateCameraList() {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -599,7 +598,6 @@
         cameraStream = stream;
         hasInitializedCamera = true;
 
-        // 音声ON/OFF反映
         cameraStream.getAudioTracks().forEach(t => { t.enabled = audioEnabled; });
 
         video.srcObject = cameraStream;
@@ -621,12 +619,10 @@
       }
     }
 
-    // 「カメラ開始」ボタン
     btnStartCamera.addEventListener('click', () => {
       initCamera(currentVideoDeviceId);
     });
 
-    // カメラ選択変更
     cameraSelect.addEventListener('change', () => {
       const devId = cameraSelect.value;
       currentVideoDeviceId = devId;
@@ -662,7 +658,15 @@
       if (video.videoWidth) resizeCanvases();
     });
 
-    // ===== 手描き =====
+    // iPad などでの縦横切り替え対策
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        if (video.videoWidth) resizeCanvases();
+      }, 200);
+    });
+
+    // 手描き
     function getCanvasPos(e) {
       const rect = drawCanvas.getBoundingClientRect();
       let clientX, clientY;
@@ -726,7 +730,7 @@
       log('手描きレイヤーをクリアしました');
     });
 
-    // ===== フィルタ・反転（プレビュー用） =====
+    // プレビュー用フィルタ
     function updateVideoFilter() {
       const exposureFactor = Math.pow(2, settings.exposure);
       const b = settings.brightness * exposureFactor;
@@ -792,7 +796,7 @@
     updateVideoFilter();
     updateVideoFlipPreview();
 
-    // ===== 画像後処理 =====
+    // 画像後処理（簡略版：ノイズ軽減＋シャープ＋線強調）
     function applyDenoiseToImage(img, strength) {
       if (strength <= 0) return;
       const w = img.width;
@@ -800,8 +804,7 @@
       const data = img.data;
       const src = new Uint8ClampedArray(data);
 
-      // かなり強めの 3x3 ぼかしブレンド
-      const k = strength; // 0〜1
+      const k = strength;
       for (let y = 1; y < h - 1; y++) {
         for (let x = 1; x < w - 1; x++) {
           const idx = (y * w + x) * 4;
@@ -824,7 +827,6 @@
           data[idx]     = Math.max(0, Math.min(255, origR * (1-k) + blurR * k));
           data[idx + 1] = Math.max(0, Math.min(255, origG * (1-k) + blurG * k));
           data[idx + 2] = Math.max(0, Math.min(255, origB * (1-k) + blurB * k));
-          // alpha はそのまま
         }
       }
     }
@@ -836,7 +838,6 @@
       const data = img.data;
       const src = new Uint8ClampedArray(data);
 
-      // amount をかなり強めに効かせる
       const centerBase = lineBoost ? 10 : 5;
       const gain = lineBoost ? 10 : 4;
       const center = centerBase + gain * amount;
@@ -868,8 +869,7 @@
       }
 
       if (lineBoost) {
-        // 線・文字をさらに強調（局所コントラストを大きく）
-        const contrast = 1.4 + 0.6 * amount; // 1.4〜2.0
+        const contrast = 1.4 + 0.6 * amount;
         for (let i = 0; i < data.length; i += 4) {
           let r = data[i], g = data[i+1], b = data[i+2];
           const yLum = 0.299*r + 0.587*g + 0.114*b;
@@ -888,7 +888,7 @@
       if (!w || !h) return;
 
       const needDenoise = settings.noiseReduce;
-      const sharpFromSlider = settings.sharpness; // 0〜1
+      const sharpFromSlider = settings.sharpness;
       const extraFromLine = settings.lineBoost ? 0.8 : 0;
       const sharpAmount = Math.min(1.5, Math.max(0, sharpFromSlider + extraFromLine));
 
@@ -896,12 +896,9 @@
 
       const img = compositeCtx.getImageData(0, 0, w, h);
 
-      // ズーム時のもやもやをかなり抑える
       if (needDenoise) {
-        applyDenoiseToImage(img, 0.7); // 強め
+        applyDenoiseToImage(img, 0.7);
       }
-
-      // シャープ＋線・文字強調
       if (sharpAmount > 0) {
         applySharpenToImage(img, sharpAmount, settings.lineBoost);
       }
@@ -909,7 +906,7 @@
       compositeCtx.putImageData(img, 0, 0);
     }
 
-    // ===== 合成（プレビューと同じ変換をそのまま再現） =====
+    // 合成（プレビューと同じ変換）
     function drawCompositeFrame() {
       const w = compositeCanvas.width;
       const h = compositeCanvas.height;
@@ -924,16 +921,13 @@
       const vw = video.videoWidth;
       const vh = video.videoHeight;
 
-      // 1. 全面を黒で塗る
       compositeCtx.save();
       compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
       compositeCtx.fillStyle = 'black';
       compositeCtx.fillRect(0, 0, w, h);
 
-      // 2. 座標系をCSSピクセルに合わせる
       compositeCtx.scale(dpr, dpr);
 
-      // 3. ズームに応じて cameraInner の transform を再現
       let s = 1;
       let tx = 0;
       let ty = 0;
@@ -955,7 +949,6 @@
       compositeCtx.translate(tx, ty);
       compositeCtx.scale(s, s);
 
-      // 4. object-fit: cover と同じように動画を描画
       const s0 = Math.max(Wcss / vw, Hcss / vh);
       const vsW = vw * s0;
       const vsH = vh * s0;
@@ -986,7 +979,6 @@
 
       compositeCtx.restore();
 
-      // 5. 手描きレイヤーを重ねる
       compositeCtx.drawImage(
         drawCanvas,
         0, 0, drawCanvas.width, drawCanvas.height,
@@ -995,11 +987,10 @@
 
       compositeCtx.restore();
 
-      // 6. ノイズ軽減＆線・文字くっきり
       postProcessFrame();
     }
 
-    // ===== 静止画 =====
+    // 静止画
     btnShot.addEventListener('click', () => {
       drawCompositeFrame();
       const url = compositeCanvas.toDataURL('image/png');
@@ -1011,7 +1002,7 @@
       log('静止画をPNGとして保存しました（映像設定・反転・ズーム・ノイズ軽減・線くっきり反映）');
     });
 
-    // ===== 通常録画 =====
+    // 通常録画
     btnStartRec.addEventListener('click', () => {
       if (!cameraStream) {
         log('先にカメラを開始してください');
@@ -1074,7 +1065,7 @@
       log('通常録画停止');
     });
 
-    // ===== タイムラプス =====
+    // タイムラプス
     btnStartTl.addEventListener('click', () => {
       if (!cameraStream) {
         log('先にカメラを開始してください');
@@ -1142,7 +1133,7 @@
       log('タイムラプス録画停止');
     });
 
-    // ===== ズーム機能 =====
+    // ズーム
     function updateZoomTransform() {
       if (!zoomRect) {
         cameraInner.style.transform = 'translate(0px, 0px) scale(1)';
@@ -1269,7 +1260,6 @@
       log('ズームを適用しました（録画・TLもこの範囲を保存）');
     }
 
-    // マウスでのズーム
     cameraWrapper.addEventListener('mousedown', (e) => {
       if (!zoomMode) return;
       e.preventDefault();
@@ -1292,7 +1282,6 @@
       finalizeZoom(pos);
     }, { capture: true });
 
-    // タッチでのズーム（iPadなど）
     cameraWrapper.addEventListener('touchstart', (e) => {
       if (!zoomMode) return;
       e.preventDefault();
