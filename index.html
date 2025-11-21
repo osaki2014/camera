@@ -67,56 +67,62 @@
       pointer-events: none;
     }
 
-    /* 下のツールバー（折り返し対応） */
+    /* ▼ 下のツールバー（1行固定・幅に応じてアイコン自動縮小） */
     #toolbar {
       position: fixed;
-      left: 50%;
-      bottom: 12px;
-      transform: translateX(-50%);
+      left: 0;
+      right: 0;
+      bottom: 8px;
+      transform: none;
       display: flex;
-      flex-wrap: wrap;                 /* ここを追加：狭いときは折り返し */
+      flex-wrap: nowrap;            /* 折り返さない */
       justify-content: center;
-      gap: 8px 10px;
-      padding: 8px 14px;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
       border-radius: 999px;
       background: rgba(0,0,0,0.75);
       backdrop-filter: blur(6px);
       z-index: 20;
-      align-items: center;
-      max-width: calc(100vw - 16px);   /* 画面横幅からはみ出さない */
+      max-width: 100%;
       box-sizing: border-box;
     }
     .tool-btn {
-      width: 64px;
-      height: 64px;
+      /* 画面幅に応じてサイズ可変：28〜40px の範囲で自動調整 */
+      width: clamp(28px, 7vw, 40px);
+      height: clamp(28px, 7vw, 40px);
       border-radius: 50%;
       border: 1px solid rgba(255,255,255,0.25);
       background: rgba(255,255,255,0.06);
       color: #fff;
-      font-size: 26px;
+      font-size: clamp(14px, 3vw, 20px);
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
       padding: 0;
+      flex: 0 0 auto;
     }
     .tool-btn.small {
-      width: 52px;
-      height: 52px;
-      font-size: 22px;
+      /* small も同じルールにして揃えやすく */
+      width: clamp(26px, 6.5vw, 36px);
+      height: clamp(26px, 6.5vw, 36px);
+      font-size: clamp(13px, 2.8vw, 18px);
     }
     .tool-btn:disabled {
       opacity: 0.35;
       cursor: default;
     }
     .tool-group-sep {
-      width: 10px;
+      width: 4px;
+      flex: 0 0 auto;
     }
     .rec-timer {
-      font-size: 13px;
-      min-width: 52px;
+      font-size: 11px;
+      min-width: 40px;
       text-align: center;
       color: #eee;
+      flex: 0 0 auto;
     }
 
     /* フローティングパネル共通 */
@@ -288,7 +294,7 @@
       <button id="btn-zoom-select" class="tool-btn small" title="ズーム領域を選択">🔍</button>
       <button id="btn-zoom-reset" class="tool-btn small" title="ズーム解除">🔁</button>
 
-      <div class="tool-group-sep" style="width:16px;"></div>
+      <div class="tool-group-sep" style="width:8px;"></div>
 
       <!-- 映像設定アイコン -->
       <button id="video-settings-toggle" class="tool-btn small" title="映像設定の表示/非表示">🎚</button>
@@ -385,6 +391,7 @@
   </div>
 
   <script>
+    /* ここから下は前回版と同じ JS（録画／ズーム／補正など）です */
     const video = document.getElementById('video');
     const drawCanvas = document.getElementById('draw-layer');
     const drawCtx = drawCanvas.getContext('2d');
@@ -438,11 +445,9 @@
     let currentVideoDeviceId = null;
     let hasInitializedCamera = false;
 
-    // 合成用キャンバス
     const compositeCanvas = document.createElement('canvas');
     const compositeCtx = compositeCanvas.getContext('2d');
 
-    // 機能サポート判定（iPhone Safari ではここが false の可能性）
     const supportsMediaRecorder = typeof MediaRecorder !== 'undefined';
     let supportsCaptureStream = false;
     try {
@@ -455,32 +460,27 @@
     uiCtx.imageSmoothingEnabled = false;
     compositeCtx.imageSmoothingEnabled = false;
 
-    // 手描き状態
     let isDrawing = false;
     let lastX = 0;
     let lastY = 0;
 
-    // 録画関連
     let recorder = null;
     let recordedChunks = [];
-    let recordingMode = null; // "normal" or "timelapse"
+    let recordingMode = null;
     let animationId = null;
     let lastTlTime = 0;
     let tlIntervalMs = 500;
 
-    // タイマー
     let recStartTime = null;
     let tlStartTime = null;
     let recTimerId = null;
     let tlTimerId = null;
 
-    // ズーム関連
     let zoomMode = false;
     let zoomRect = null;
     let zoomDragStart = null;
     let lastZoomPos = null;
 
-    // 映像設定
     const settings = {
       brightness: 1,
       contrast: 1,
@@ -494,7 +494,6 @@
     let flipH = true;
     let flipV = false;
 
-    // 音声ON/OFF（デフォルトOFF）
     let audioEnabled = false;
     audioEnabledCheckbox.checked = false;
 
@@ -544,7 +543,6 @@
       }
     }
 
-    // ログ・パネル切替
     logToggle.addEventListener('click', () => {
       logPanel.classList.toggle('open');
     });
@@ -555,7 +553,6 @@
       videoPanel.style.display = videoPanel.style.display === 'block' ? 'none' : 'block';
     });
 
-    // 音声ON/OFF
     audioEnabledCheckbox.addEventListener('change', () => {
       audioEnabled = audioEnabledCheckbox.checked;
       log(`音声録音: ${audioEnabled ? 'ON' : 'OFF'}`);
@@ -566,7 +563,6 @@
       }
     });
 
-    // カメラ一覧
     async function populateCameraList() {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -596,7 +592,6 @@
       }
     }
 
-    // カメラ開始／切替
     async function initCamera(deviceId = null) {
       try {
         if (cameraStream) {
@@ -654,7 +649,6 @@
       }
     });
 
-    // 高解像度キャンバス
     function resizeCanvases() {
       const rect = cameraWrapper.getBoundingClientRect();
       const width = rect.width;
@@ -681,7 +675,6 @@
       if (video.videoWidth) resizeCanvases();
     });
 
-    // iPad / iPhone 縦横切り替え時のケア
     window.addEventListener('orientationchange', () => {
       setTimeout(() => {
         window.scrollTo(0, 0);
@@ -689,7 +682,6 @@
       }, 200);
     });
 
-    // 手描き
     function getCanvasPos(e) {
       const rect = drawCanvas.getBoundingClientRect();
       let clientX, clientY;
@@ -753,7 +745,6 @@
       log('手描きレイヤーをクリアしました');
     });
 
-    // プレビュー用フィルタ
     function updateVideoFilter() {
       const exposureFactor = Math.pow(2, settings.exposure);
       const b = settings.brightness * exposureFactor;
@@ -819,7 +810,6 @@
     updateVideoFilter();
     updateVideoFlipPreview();
 
-    // 画像後処理（ノイズ軽減＋シャープ＋線強調）
     function applyDenoiseToImage(img, strength) {
       if (strength <= 0) return;
       const w = img.width;
@@ -929,7 +919,6 @@
       compositeCtx.putImageData(img, 0, 0);
     }
 
-    // 合成（プレビューと同じ変換）
     function drawCompositeFrame() {
       const w = compositeCanvas.width;
       const h = compositeCanvas.height;
@@ -1013,7 +1002,6 @@
       postProcessFrame();
     }
 
-    // 静止画
     btnShot.addEventListener('click', () => {
       drawCompositeFrame();
       const url = compositeCanvas.toDataURL('image/png');
@@ -1025,7 +1013,6 @@
       log('静止画をPNGとして保存しました（映像設定・反転・ズーム・ノイズ軽減・線くっきり反映）');
     });
 
-    // 通常録画
     btnStartRec.addEventListener('click', () => {
       if (!cameraStream) {
         log('先にカメラを開始してください');
@@ -1092,7 +1079,6 @@
       log('通常録画停止');
     });
 
-    // タイムラプス
     btnStartTl.addEventListener('click', () => {
       if (!cameraStream) {
         log('先にカメラを開始してください');
@@ -1165,7 +1151,6 @@
       log('タイムラプス録画停止');
     });
 
-    // ズーム
     function updateZoomTransform() {
       if (!zoomRect) {
         cameraInner.style.transform = 'translate(0px, 0px) scale(1)';
