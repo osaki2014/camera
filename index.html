@@ -199,6 +199,23 @@
       font-size: 20px;
       padding: 0;
     }
+/* 黒板消しアイコン */
+#btn-clear .eraser-icon {
+  display: block;
+  width: 22px;
+  height: 14px;
+  border-radius: 3px;
+  background: linear-gradient(
+    to bottom,
+    #f5c37a 0 45%,   /* 上：木の部分っぽい色 */
+    #f5c37a 45% 50%, /* 境目少し太め */
+    #365e9a 50% 100% /* 下：青いフェルト部分 */
+  );
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,0.25) inset,
+    0 1px 0 rgba(255,255,255,0.2);
+  margin-top: 2px; /* 縦方向の位置微調整 */
+}
 
     /* ログパネル */
     #log-panel {
@@ -251,7 +268,9 @@
       <span class="title">カメラ＋手描き＋ズーム＋映像調整＋静止画／動画／TL</span>
       <div id="header-right">
         <button id="pen-toggle" title="手描き設定の表示/非表示">✏️</button>
-        <button id="btn-clear" title="手描きクリア">🧹</button>
+<button id="btn-clear" title="手描きクリア">
+  <span class="eraser-icon" aria-hidden="true"></span>
+</button>
         <button id="log-toggle" title="ログ表示／非表示">ℹ️</button>
       </div>
     </header>
