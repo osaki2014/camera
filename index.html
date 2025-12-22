@@ -36,7 +36,34 @@
       gap: 8px;
       align-items: center;
     }
-    #camera-wrapper {
+    
+    /* ヘッダ：色パレット（3色固定） */
+    #header-palette{
+      display:flex;
+      gap:6px;
+      align-items:center;
+      margin-right: 4px;
+    }
+    .swatch-btn{
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      border: 2px solid rgba(255,255,255,0.55);
+      background: transparent;
+      padding: 0;
+      cursor: pointer;
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.35) inset;
+    }
+    .swatch-btn.active{
+      outline: 2px solid rgba(125, 211, 252, 0.95);
+      outline-offset: 2px;
+    }
+    /* ヘッダ：ツール（消しゴム・図形） */
+    .tool-toggle.active{
+      outline: 2px solid rgba(125, 211, 252, 0.95);
+      outline-offset: 2px;
+    }
+#camera-wrapper {
       position: relative;
       flex: 1;
       background: #000;
@@ -185,7 +212,9 @@
     /* ヘッダ小ボタン */
     #log-toggle,
     #pen-toggle,
-    #btn-clear {
+    #btn-clear,
+    #tool-eraser,
+    #tool-shape {
       border-radius: 999px;
       border: 1px solid rgba(255,255,255,0.25);
       background: rgba(255,255,255,0.10);
@@ -267,7 +296,15 @@
     <header>
       <span class="title">カメラ＋手描き＋ズーム＋映像調整＋静止画／動画／TL</span>
       <div id="header-right">
-        <button id="pen-toggle" title="手描き設定の表示/非表示">✏️</button>
+        
+<div id="header-palette" title="色パレット（白・赤・水色）">
+  <button class="swatch-btn" data-color="#ffffff" title="白" style="background:#ffffff"></button>
+  <button class="swatch-btn" data-color="#ff0000" title="赤" style="background:#ff0000"></button>
+  <button class="swatch-btn" data-color="#7dd3fc" title="水色" style="background:#7dd3fc"></button>
+</div>
+<button id="tool-eraser" class="tool-toggle" title="消しゴム（描線を削除）">🧽</button>
+<button id="tool-shape" class="tool-toggle" title="図形（四角）">□</button>
+<button id="pen-toggle" title="手描き設定の表示/非表示">✏️</button>
 <button id="btn-clear" title="手描きクリア">
   <span class="eraser-icon" aria-hidden="true"></span>
 </button>
@@ -436,6 +473,12 @@
 
     const penColorInput = document.getElementById('pen-color');
     const penSizeInput = document.getElementById('pen-size');
+
+    const headerPalette = document.getElementById('header-palette');
+    const swatchButtons = Array.from(document.querySelectorAll('.swatch-btn'));
+    const toolEraserBtn = document.getElementById('tool-eraser');
+    const toolShapeBtn = document.getElementById('tool-shape');
+
     const videoFpsInput = document.getElementById('video-fps');
     const tlFpsInput = document.getElementById('tl-fps');
     const tlIntervalInput = document.getElementById('tl-interval');
@@ -483,6 +526,12 @@
     let lastX = 0;
     let lastY = 0;
 
+    // ===== ツール状態（ペン／消しゴム／図形） =====
+    let toolMode = 'pen'; // 'pen' | 'eraser' | 'shape'
+    let shapeDragStart = null; // {x,y} (canvas内部座標)
+    let lastShapePos = null;
+
+
     let recorder = null;
     let recordedChunks = [];
     let recordingMode = null;
@@ -521,6 +570,61 @@
       const time = now.toLocaleTimeString();
       logEl.textContent = `[${time}] ${msg}\n` + logEl.textContent;
     }
+
+
+    function setActiveSwatch(colorHex) {
+      swatchButtons.forEach(btn => {
+        btn.classList.toggle('active', (btn.dataset.color || '').toLowerCase() === colorHex.toLowerCase());
+      });
+    }
+
+    function setToolMode(mode) {
+      toolMode = mode;
+      toolEraserBtn.classList.toggle('active', mode === 'eraser');
+      toolShapeBtn.classList.toggle('active', mode === 'shape');
+
+      // 図形プレビューを消す
+      if (mode !== 'shape') {
+        shapeDragStart = null;
+        lastShapePos = null;
+        uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
+      }
+
+      // 描画モード切替
+      if (mode === 'eraser') {
+        drawCtx.globalCompositeOperation = 'destination-out';
+      } else {
+        drawCtx.globalCompositeOperation = 'source-over';
+      }
+    }
+
+    // 初期状態：赤を選択、ペンモード
+    setActiveSwatch(penColorInput.value || '#ff0000');
+    setToolMode('pen');
+
+    // ヘッダの色パレット
+    swatchButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const c = btn.dataset.color || '#ff0000';
+        penColorInput.value = c;
+        setActiveSwatch(c);
+        // 色を選んだらペンに戻す（消しゴム中でもすぐ描ける）
+        setToolMode('pen');
+        log(`色を変更: ${c}`);
+      });
+    });
+
+    // 消しゴム（トグル）
+    toolEraserBtn.addEventListener('click', () => {
+      setToolMode(toolMode === 'eraser' ? 'pen' : 'eraser');
+      log(`ツール: ${toolMode === 'eraser' ? '消しゴム' : 'ペン'}`);
+    });
+
+    // 図形（四角）モード（トグル）
+    toolShapeBtn.addEventListener('click', () => {
+      setToolMode(toolMode === 'shape' ? 'pen' : 'shape');
+      log(`ツール: ${toolMode === 'shape' ? '図形（四角）' : 'ペン'}`);
+    });
 
     if (!supportsMediaRecorder || !supportsCaptureStream) {
       log('このブラウザでは録画／タイムラプス機能が完全にはサポートされていない可能性があります（静止画は利用可能）。');
@@ -570,6 +674,12 @@
     });
     videoSettingsToggle.addEventListener('click', () => {
       videoPanel.style.display = videoPanel.style.display === 'block' ? 'none' : 'block';
+    });
+
+    // 手描き設定パネルのカラーピッカーで色を変えた場合も、パレットの選択表示を同期
+    penColorInput.addEventListener('input', () => {
+      setActiveSwatch(penColorInput.value);
+      if (toolMode !== 'eraser') setToolMode('pen');
     });
 
     audioEnabledCheckbox.addEventListener('change', () => {
@@ -683,6 +793,7 @@
 
       drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
       uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
+      uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
 
       zoomRect = null;
       updateZoomTransform();
@@ -719,16 +830,49 @@
     function startDraw(e) {
       if (zoomMode) return;
       e.preventDefault();
-      isDrawing = true;
       const pos = getCanvasPos(e);
+
+      // 図形モード：ドラッグ開始点を記録してプレビュー開始
+      if (toolMode === 'shape') {
+        isDrawing = true;
+        shapeDragStart = pos;
+        lastShapePos = pos;
+        uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
+        return;
+      }
+
+      // ペン／消しゴム
+      isDrawing = true;
       lastX = pos.x;
       lastY = pos.y;
     }
+
 
     function draw(e) {
       if (!isDrawing || zoomMode) return;
       e.preventDefault();
       const pos = getCanvasPos(e);
+
+      // 図形モード：ui-layer にプレビュー（四角）を描く
+      if (toolMode === 'shape') {
+        if (!shapeDragStart) return;
+        lastShapePos = pos;
+
+        uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
+        uiCtx.save();
+        uiCtx.strokeStyle = penColorInput.value;
+        uiCtx.lineWidth = Math.max(1, Number(penSizeInput.value) || 3);
+        uiCtx.setLineDash([6, 4]);
+        const x = Math.min(shapeDragStart.x, pos.x);
+        const y = Math.min(shapeDragStart.y, pos.y);
+        const w = Math.abs(pos.x - shapeDragStart.x);
+        const h = Math.abs(pos.y - shapeDragStart.y);
+        uiCtx.strokeRect(x, y, w, h);
+        uiCtx.restore();
+        return;
+      }
+
+      // ペン／消しゴム：draw-layer に描く
       drawCtx.strokeStyle = penColorInput.value;
       drawCtx.lineWidth = Number(penSizeInput.value) || 3;
       drawCtx.lineCap = 'round';
@@ -743,11 +887,44 @@
       lastY = pos.y;
     }
 
+
     function endDraw(e) {
       if (!isDrawing) return;
       e.preventDefault();
+
+      // 図形モード：プレビューを本描画へ
+      if (toolMode === 'shape' && shapeDragStart && lastShapePos) {
+        const x = Math.min(shapeDragStart.x, lastShapePos.x);
+        const y = Math.min(shapeDragStart.y, lastShapePos.y);
+        const w = Math.abs(lastShapePos.x - shapeDragStart.x);
+        const h = Math.abs(lastShapePos.y - shapeDragStart.y);
+
+        // ある程度以上のサイズのみ確定
+        const minSize = 4;
+        if (w >= minSize && h >= minSize) {
+          // 図形は必ず source-over で描く（消しゴムの合成モードの影響を受けない）
+          const prevOp = drawCtx.globalCompositeOperation;
+          drawCtx.globalCompositeOperation = 'source-over';
+
+          drawCtx.save();
+          drawCtx.strokeStyle = penColorInput.value;
+          drawCtx.lineWidth = Number(penSizeInput.value) || 3;
+          drawCtx.lineJoin = 'round';
+          drawCtx.fillStyle = '#ffffff';   // 白で塗りつぶし
+          drawCtx.fillRect(x, y, w, h);
+          drawCtx.restore();
+
+          drawCtx.globalCompositeOperation = prevOp;
+        }
+
+        uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
+        shapeDragStart = null;
+        lastShapePos = null;
+      }
+
       isDrawing = false;
     }
+
 
     drawCanvas.addEventListener('mousedown', startDraw);
     drawCanvas.addEventListener('mousemove', draw);
@@ -761,6 +938,7 @@
 
     btnClear.addEventListener('click', () => {
       drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+      uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
       log('手描きレイヤーをクリアしました');
     });
 
