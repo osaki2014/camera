@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <title>カメラ＋手描き＋ズーム＋映像調整＋撮影</title>
+  <title>カメラ＋手描き＋ズーム＋映像調整＋静止画／動画／TL</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     html, body {
@@ -28,15 +28,99 @@
       z-index: 5;
       position: relative;
     }
+    /* タイトル＋QRボタンをまとめる左側 */
+    #header-left{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      min-width:0;
+    }
     header span.title {
       font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 50vw;
     }
     #header-right {
       display: flex;
       gap: 8px;
       align-items: center;
     }
-    
+
+    /* QRボタン（QRっぽいアイコン） */
+    #qr-button{
+      width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.25);
+      background: rgba(255,255,255,0.10);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+    }
+    #qr-button svg{
+      width: 18px;
+      height: 18px;
+      display:block;
+    }
+    #qr-button:active{
+      transform: translateY(1px);
+    }
+
+    /* QRオーバーレイ（画面いっぱい） */
+    #qr-overlay{
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+    }
+    #qr-overlay.open{
+      display: flex;
+    }
+    #qr-box{
+      background: #fff;
+      color: #000;
+      width: 100vw;
+      height: 100vh;
+      max-width: 100vw;
+      max-height: 100vh;
+      border-radius: 0;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      text-align:center;
+      box-sizing:border-box;
+      padding: 16px;
+    }
+    #qr-box h2{
+      margin: 0 0 8px;
+      font-size: 15px;
+    }
+    #qr-img{
+      width: min(80vw,80vh);
+      height: min(80vw,80vh);
+      display: block;
+      margin: 0 auto;
+    }
+    #qr-close{
+      margin-top: 8px;
+      padding: 6px 16px;
+      border-radius: 999px;
+      border: none;
+      background: #333;
+      color: #fff;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
     /* ヘッダ：色パレット（3色固定） */
     #header-palette{
       display:flex;
@@ -45,25 +129,42 @@
       margin-right: 4px;
     }
     .swatch-btn{
-      width: 22px;
-      height: 22px;
+      position:relative;
+      width: 32px;
+      height: 32px;
       border-radius: 999px;
-      border: 2px solid rgba(255,255,255,0.55);
-      background: transparent;
+      border: 1px solid rgba(255,255,255,0.55);
+      background: rgba(0,0,0,0.4);
       padding: 0;
       cursor: pointer;
+      display:flex;
+      align-items:center;
+      justify-content:center;
       box-shadow: 0 0 0 1px rgba(0,0,0,0.35) inset;
     }
     .swatch-btn.active{
       outline: 2px solid rgba(125, 211, 252, 0.95);
       outline-offset: 2px;
     }
-    /* ヘッダ：ツール（消しゴム・図形） */
+    .swatch-circle{
+      border-radius:50%;
+      background:#fff;
+      transition: width 0.15s ease, height 0.15s ease;
+    }
+    .swatch-pen{
+      position:absolute;
+      font-size:14px;
+      pointer-events:none;
+      text-shadow:0 0 2px rgba(0,0,0,0.6);
+    }
+
+    /* ヘッダ：ツール（消しゴム・図形など） */
     .tool-toggle.active{
       outline: 2px solid rgba(125, 211, 252, 0.95);
       outline-offset: 2px;
     }
-#camera-wrapper {
+
+    #camera-wrapper {
       position: relative;
       flex: 1;
       background: #000;
@@ -102,7 +203,7 @@
       bottom: 8px;
       transform: none;
       display: flex;
-      flex-wrap: nowrap;            /* 折り返さない */
+      flex-wrap: nowrap;
       justify-content: center;
       align-items: center;
       gap: 6px;
@@ -115,7 +216,6 @@
       box-sizing: border-box;
     }
     .tool-btn {
-      /* 画面幅に応じてサイズ可変：28〜40px の範囲で自動調整 */
       width: clamp(28px, 7vw, 40px);
       height: clamp(28px, 7vw, 40px);
       border-radius: 50%;
@@ -131,7 +231,6 @@
       flex: 0 0 auto;
     }
     .tool-btn.small {
-      /* small も同じルールにして揃えやすく */
       width: clamp(26px, 6.5vw, 36px);
       height: clamp(26px, 6.5vw, 36px);
       font-size: clamp(13px, 2.8vw, 18px);
@@ -163,6 +262,7 @@
       z-index: 25;
       max-width: 260px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+      display:none;
     }
     .floating-panel .panel-title {
       font-weight: 600;
@@ -195,26 +295,18 @@
       max-width: 150px;
     }
 
-    /* ペンパネル（ヘッダー側） */
-    #pen-panel {
-      top: 48px;
-      right: 10px;
-      display: none;
-    }
-
     /* 映像設定パネル（右下） */
     #video-panel {
       right: 10px;
       bottom: 84px;
-      display: none;
     }
 
     /* ヘッダ小ボタン */
     #log-toggle,
-    #pen-toggle,
     #btn-clear,
     #tool-eraser,
-    #tool-shape {
+    #tool-shape,
+    #btn-undo {
       border-radius: 999px;
       border: 1px solid rgba(255,255,255,0.25);
       background: rgba(255,255,255,0.10);
@@ -228,23 +320,27 @@
       font-size: 20px;
       padding: 0;
     }
-/* 黒板消しアイコン */
-#btn-clear .eraser-icon {
-  display: block;
-  width: 22px;
-  height: 14px;
-  border-radius: 3px;
-  background: linear-gradient(
-    to bottom,
-    #f5c37a 0 45%,   /* 上：木の部分っぽい色 */
-    #f5c37a 45% 50%, /* 境目少し太め */
-    #365e9a 50% 100% /* 下：青いフェルト部分 */
-  );
-  box-shadow:
-    0 0 0 1px rgba(0,0,0,0.25) inset,
-    0 1px 0 rgba(255,255,255,0.2);
-  margin-top: 2px; /* 縦方向の位置微調整 */
-}
+    #btn-undo:disabled{
+      opacity:0.35;
+      cursor:default;
+    }
+    /* 黒板消しアイコン（全クリア） */
+    #btn-clear .eraser-icon {
+      display: block;
+      width: 22px;
+      height: 14px;
+      border-radius: 3px;
+      background: linear-gradient(
+        to bottom,
+        #f5c37a 0 45%,
+        #f5c37a 45% 50%,
+        #365e9a 50% 100%
+      );
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.25) inset,
+        0 1px 0 rgba(255,255,255,0.2);
+      margin-top: 2px;
+    }
 
     /* ログパネル */
     #log-panel {
@@ -294,20 +390,45 @@
 <body>
   <div id="app">
     <header>
-      <span class="title">カメラ＋手描き＋ズーム＋映像調整＋静止画／動画／TL</span>
+      <div id="header-left">
+        <!-- QRボタン（QRっぽいSVGアイコン） -->
+        <button id="qr-button" title="このアプリのQRコードを表示" aria-label="QRコード">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/>
+            <rect x="5" y="5" width="3" height="3" fill="currentColor"/>
+            <rect x="14" y="3" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/>
+            <rect x="16" y="5" width="3" height="3" fill="currentColor"/>
+            <rect x="3" y="14" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/>
+            <rect x="5" y="16" width="3" height="3" fill="currentColor"/>
+            <rect x="14" y="14" width="3" height="3" fill="currentColor"/>
+            <rect x="18" y="14" width="3" height="3" fill="currentColor"/>
+            <rect x="14" y="18" width="3" height="3" fill="currentColor"/>
+          </svg>
+        </button>
+        <span class="title">カメラ＋手描き＋ズーム＋映像調整＋静止画／動画／TL</span>
+      </div>
       <div id="header-right">
-        
-<div id="header-palette" title="色パレット（白・赤・水色）">
-  <button class="swatch-btn" data-color="#ffffff" title="白" style="background:#ffffff"></button>
-  <button class="swatch-btn" data-color="#ff0000" title="赤" style="background:#ff0000"></button>
-  <button class="swatch-btn" data-color="#7dd3fc" title="水色" style="background:#7dd3fc"></button>
-</div>
-<button id="tool-eraser" class="tool-toggle" title="消しゴム（描線を削除）">🧽</button>
-<button id="tool-shape" class="tool-toggle" title="図形（四角）">□</button>
-<button id="pen-toggle" title="手描き設定の表示/非表示">✏️</button>
-<button id="btn-clear" title="手描きクリア">
-  <span class="eraser-icon" aria-hidden="true"></span>
-</button>
+        <div id="header-palette" title="色パレット（白・赤・水色）">
+          <button class="swatch-btn" data-pen-index="0" title="ペン1">
+            <span class="swatch-circle"></span>
+            <span class="swatch-pen">✏️</span>
+          </button>
+          <button class="swatch-btn" data-pen-index="1" title="ペン2">
+            <span class="swatch-circle"></span>
+            <span class="swatch-pen">✏️</span>
+          </button>
+          <button class="swatch-btn" data-pen-index="2" title="ペン3">
+            <span class="swatch-circle"></span>
+            <span class="swatch-pen">✏️</span>
+          </button>
+        </div>
+        <button id="tool-eraser" class="tool-toggle" title="消しゴム（描線を削除）">🧽</button>
+        <button id="tool-shape" class="tool-toggle" title="図形（四角）">□</button>
+        <!-- ★ Undoボタン追加 -->
+        <button id="btn-undo" title="一つ戻す（Undo）">↶</button>
+        <button id="btn-clear" title="手描きクリア">
+          <span class="eraser-icon" aria-hidden="true"></span>
+        </button>
         <button id="log-toggle" title="ログ表示／非表示">ℹ️</button>
       </div>
     </header>
@@ -356,14 +477,40 @@
       <button id="video-settings-toggle" class="tool-btn small" title="映像設定の表示/非表示">🎚</button>
     </div>
 
-    <!-- 手描き設定パネル -->
-    <div id="pen-panel" class="floating-panel">
-      <div class="panel-title">手描き設定</div>
+    <!-- ペン設定パネル（3つ） -->
+    <div id="pen-config-0" class="floating-panel">
+      <div class="panel-title">ペン1</div>
       <label>色
-        <input type="color" id="pen-color" value="#ff0000">
+        <input type="color" id="pen-color-0" value="#ffffff">
       </label>
       <label>太さ
-        <input type="number" id="pen-size" min="1" max="40" value="5">
+        <input type="number" id="pen-size-0" min="1" max="40" value="10">
+      </label>
+    </div>
+    <div id="pen-config-1" class="floating-panel">
+      <div class="panel-title">ペン2</div>
+      <label>色
+        <input type="color" id="pen-color-1" value="#ff0000">
+      </label>
+      <label>太さ
+        <input type="number" id="pen-size-1" min="1" max="40" value="10">
+      </label>
+    </div>
+    <div id="pen-config-2" class="floating-panel">
+      <div class="panel-title">ペン3</div>
+      <label>色
+        <input type="color" id="pen-color-2" value="#7dd3fc">
+      </label>
+      <label>太さ
+        <input type="number" id="pen-size-2" min="1" max="40" value="10">
+      </label>
+    </div>
+
+    <!-- 消しゴム設定パネル -->
+    <div id="eraser-config" class="floating-panel">
+      <div class="panel-title">消しゴム</div>
+      <label>太さ
+        <input type="number" id="eraser-size" min="5" max="80" value="30">
       </label>
     </div>
 
@@ -444,10 +591,19 @@
 
     <!-- ズーム選択中のヒント -->
     <div id="zoom-hint">ズームしたい範囲をドラッグ（指／ペン／マウス）</div>
+
+    <!-- QRオーバーレイ -->
+    <div id="qr-overlay">
+      <div id="qr-box">
+        <h2>このアプリのQRコード</h2>
+        <img id="qr-img" alt="https://gensai-rika.github.io/camera/ のQRコード">
+        <div style="font-size:11px;margin-top:4px;">スマートフォンで読み込んでください</div>
+        <button id="qr-close">閉じる</button>
+      </div>
+    </div>
   </div>
 
   <script>
-    /* ここから下は前回版と同じ JS（録画／ズーム／補正など）です */
     const video = document.getElementById('video');
     const drawCanvas = document.getElementById('draw-layer');
     const drawCtx = drawCanvas.getContext('2d');
@@ -458,6 +614,7 @@
 
     const btnStartCamera = document.getElementById('btn-start-camera');
     const btnClear = document.getElementById('btn-clear');
+    const btnUndo = document.getElementById('btn-undo'); // ★ Undo ボタン
     const btnShot = document.getElementById('btn-shot');
     const btnStartRec = document.getElementById('btn-start-rec');
     const btnStopRec = document.getElementById('btn-stop-rec');
@@ -467,12 +624,7 @@
     const btnZoomReset = document.getElementById('btn-zoom-reset');
     const videoSettingsToggle = document.getElementById('video-settings-toggle');
 
-    const penToggle = document.getElementById('pen-toggle');
-    const penPanel = document.getElementById('pen-panel');
     const videoPanel = document.getElementById('video-panel');
-
-    const penColorInput = document.getElementById('pen-color');
-    const penSizeInput = document.getElementById('pen-size');
 
     const headerPalette = document.getElementById('header-palette');
     const swatchButtons = Array.from(document.querySelectorAll('.swatch-btn'));
@@ -503,6 +655,27 @@
     const recTimerEl = document.getElementById('rec-timer');
     const tlTimerEl = document.getElementById('tl-timer');
 
+    // QR関連
+    const qrButton = document.getElementById('qr-button');
+    const qrOverlay = document.getElementById('qr-overlay');
+    const qrImg = document.getElementById('qr-img');
+    const qrClose = document.getElementById('qr-close');
+    const QR_URL = 'https://gensai-rika.github.io/camera/';
+
+    qrButton.addEventListener('click', () => {
+      const encoded = encodeURIComponent(QR_URL);
+      qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encoded}`;
+      qrOverlay.classList.add('open');
+    });
+    qrClose.addEventListener('click', () => {
+      qrOverlay.classList.remove('open');
+    });
+    qrOverlay.addEventListener('click', (e) => {
+      if (e.target === qrOverlay) {
+        qrOverlay.classList.remove('open');
+      }
+    });
+
     let cameraStream = null;
     let currentVideoDeviceId = null;
     let hasInitializedCamera = false;
@@ -528,9 +701,40 @@
 
     // ===== ツール状態（ペン／消しゴム／図形） =====
     let toolMode = 'pen'; // 'pen' | 'eraser' | 'shape'
-    let shapeDragStart = null; // {x,y} (canvas内部座標)
+    let shapeDragStart = null;
     let lastShapePos = null;
 
+    // ペン3本＋消しゴムの独立設定
+    const pens = [
+      { color:'#ffffff', size:10 },
+      { color:'#ff0000', size:10 },
+      { color:'#7dd3fc', size:10 }
+    ];
+    let activePenIndex = 1; // デフォルト赤ペン
+    let eraserSize = 30;    // 消しゴム太さデフォルト
+
+    const penConfigs = [
+      {
+        panel: document.getElementById('pen-config-0'),
+        colorInput: document.getElementById('pen-color-0'),
+        sizeInput: document.getElementById('pen-size-0')
+      },
+      {
+        panel: document.getElementById('pen-config-1'),
+        colorInput: document.getElementById('pen-color-1'),
+        sizeInput: document.getElementById('pen-size-1')
+      },
+      {
+        panel: document.getElementById('pen-config-2'),
+        colorInput: document.getElementById('pen-color-2'),
+        sizeInput: document.getElementById('pen-size-2')
+      }
+    ];
+    const eraserConfigPanel = document.getElementById('eraser-config');
+    const eraserSizeInput = document.getElementById('eraser-size');
+
+    let openPenConfigIndex = null;
+    let eraserConfigOpen = false;
 
     let recorder = null;
     let recordedChunks = [];
@@ -565,32 +769,116 @@
     let audioEnabled = false;
     audioEnabledCheckbox.checked = false;
 
+    // ===== Undo スタック =====
+    const undoStack = [];
+    const maxUndo = 50;
+
+    function updateUndoButton() {
+      btnUndo.disabled = undoStack.length === 0;
+    }
+
+    function pushUndo() {
+      if (!drawCanvas.width || !drawCanvas.height) return;
+      try {
+        const snapshot = drawCtx.getImageData(0, 0, drawCanvas.width, drawCanvas.height);
+        undoStack.push(snapshot);
+        if (undoStack.length > maxUndo) {
+          undoStack.shift();
+        }
+        updateUndoButton();
+      } catch (e) {
+        console.error('pushUndo error', e);
+      }
+    }
+
+    function performUndo() {
+      if (!undoStack.length) return;
+      try {
+        const snapshot = undoStack.pop();
+        drawCtx.putImageData(snapshot, 0, 0);
+        uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
+        shapeDragStart = null;
+        lastShapePos = null;
+        log('1つ前の描画に戻しました');
+      } catch (e) {
+        console.error('performUndo error', e);
+      }
+      updateUndoButton();
+    }
+
+    btnUndo.addEventListener('click', () => {
+      performUndo();
+    });
+    updateUndoButton();
+
+    // ===== ログ =====
     function log(msg) {
       const now = new Date();
       const time = now.toLocaleTimeString();
       logEl.textContent = `[${time}] ${msg}\n` + logEl.textContent;
     }
 
+    // ===== パネル位置調整（アイコンの真下に表示） =====
+    function showPanelUnder(panel, anchorEl) {
+      if (!panel || !anchorEl) return;
+      panel.style.display = 'block';
+      panel.style.visibility = 'hidden';
 
-    function setActiveSwatch(colorHex) {
-      swatchButtons.forEach(btn => {
-        btn.classList.toggle('active', (btn.dataset.color || '').toLowerCase() === colorHex.toLowerCase());
-      });
+      const rect = anchorEl.getBoundingClientRect();
+      const pRect = panel.getBoundingClientRect();
+
+      let left = rect.left;
+      if (left + pRect.width > window.innerWidth - 8) {
+        left = window.innerWidth - pRect.width - 8;
+      }
+      if (left < 8) left = 8;
+
+      const top = rect.bottom + 4;
+
+      panel.style.left = `${left}px`;
+      panel.style.top = `${top}px`;
+      panel.style.visibility = 'visible';
+    }
+    function hidePanel(panel) {
+      if (!panel) return;
+      panel.style.display = 'none';
     }
 
+    // ===== ペンアイコンの見た目更新（円サイズのみ太さ反映） =====
+    function updateSwatchVisual(index) {
+      const btn = swatchButtons[index];
+      if (!btn) return;
+      const circle = btn.querySelector('.swatch-circle');
+      if (!circle) return;
+      const pen = pens[index];
+      circle.style.background = pen.color;
+
+      const minSize = 10;
+      const maxSize = 26;
+      const minWidth = 1;
+      const maxWidth = 40;
+      const t = Math.max(minWidth, Math.min(maxWidth, pen.size));
+      const ratio = (t - minWidth) / (maxWidth - minWidth);
+      const size = minSize + (maxSize - minSize) * ratio;
+      circle.style.width = `${size}px`;
+      circle.style.height = `${size}px`;
+    }
+    function updateAllSwatches() {
+      pens.forEach((_, idx) => updateSwatchVisual(idx));
+    }
+
+    // ===== ツール切り替え =====
     function setToolMode(mode) {
       toolMode = mode;
       toolEraserBtn.classList.toggle('active', mode === 'eraser');
       toolShapeBtn.classList.toggle('active', mode === 'shape');
 
-      // 図形プレビューを消す
       if (mode !== 'shape') {
         shapeDragStart = null;
         lastShapePos = null;
         uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
       }
 
-      // 描画モード切替
       if (mode === 'eraser') {
         drawCtx.globalCompositeOperation = 'destination-out';
       } else {
@@ -598,31 +886,94 @@
       }
     }
 
-    // 初期状態：赤を選択、ペンモード
-    setActiveSwatch(penColorInput.value || '#ff0000');
+    function setActivePen(index) {
+      activePenIndex = index;
+      swatchButtons.forEach(btn => {
+        const i = Number(btn.dataset.penIndex);
+        btn.classList.toggle('active', i === index);
+      });
+      if (toolMode === 'eraser') {
+        // 消しゴムモードのままでもOK
+      }
+    }
+
+    // 初期状態：赤ペン／10px／消しゴム30px
+    setActivePen(1);
+    updateAllSwatches();
+    eraserSize = 30;
+    eraserSizeInput.value = 30;
     setToolMode('pen');
 
-    // ヘッダの色パレット
-    swatchButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const c = btn.dataset.color || '#ff0000';
-        penColorInput.value = c;
-        setActiveSwatch(c);
-        // 色を選んだらペンに戻す（消しゴム中でもすぐ描ける）
-        setToolMode('pen');
-        log(`色を変更: ${c}`);
+    // ペン設定パネルとデータの同期
+    pens.forEach((pen, idx) => {
+      penConfigs[idx].colorInput.value = pen.color;
+      penConfigs[idx].sizeInput.value = pen.size;
+      penConfigs[idx].colorInput.addEventListener('input', () => {
+        pen.color = penConfigs[idx].colorInput.value;
+        updateSwatchVisual(idx);
+        log(`ペン${idx+1} 色変更: ${pen.color}`);
+      });
+      penConfigs[idx].sizeInput.addEventListener('input', () => {
+        const v = Number(penConfigs[idx].sizeInput.value) || 1;
+        pen.size = v;
+        updateSwatchVisual(idx);
+        log(`ペン${idx+1} 太さ変更: ${v}px`);
       });
     });
 
-    // 消しゴム（トグル）
+    // 消しゴム設定
+    eraserSizeInput.addEventListener('input', () => {
+      const v = Number(eraserSizeInput.value) || 1;
+      eraserSize = v;
+      log(`消しゴム 太さ変更: ${v}px`);
+    });
+
+    // ヘッダの色パレット（クリックでペン選択＋そのペン設定ウィンドウ表示/非表示）
+    swatchButtons.forEach(btn => {
+      const idx = Number(btn.dataset.penIndex);
+      btn.addEventListener('click', () => {
+        const same = (openPenConfigIndex === idx && penConfigs[idx].panel.style.display === 'block');
+        setToolMode('pen');
+        setActivePen(idx);
+
+        // いったん全部閉じる
+        penConfigs.forEach(conf => hidePanel(conf.panel));
+        hidePanel(eraserConfigPanel);
+        eraserConfigOpen = false;
+
+        if (!same) {
+          openPenConfigIndex = idx;
+          showPanelUnder(penConfigs[idx].panel, btn);
+        } else {
+          openPenConfigIndex = null;
+        }
+      });
+    });
+
+    // 消しゴム（トグル＋設定ウィンドウ）
     toolEraserBtn.addEventListener('click', () => {
-      setToolMode(toolMode === 'eraser' ? 'pen' : 'eraser');
-      log(`ツール: ${toolMode === 'eraser' ? '消しゴム' : 'ペン'}`);
+      const willEraser = toolMode !== 'eraser';
+      if (willEraser) {
+        setToolMode('eraser');
+        // ペン設定は閉じる
+        penConfigs.forEach(conf => hidePanel(conf.panel));
+        openPenConfigIndex = null;
+        // 消しゴム設定を表示
+        showPanelUnder(eraserConfigPanel, toolEraserBtn);
+        eraserConfigOpen = true;
+        log('ツール: 消しゴム');
+      } else {
+        setToolMode('pen');
+        hidePanel(eraserConfigPanel);
+        eraserConfigOpen = false;
+        log('ツール: ペン');
+      }
     });
 
     // 図形（四角）モード（トグル）
     toolShapeBtn.addEventListener('click', () => {
-      setToolMode(toolMode === 'shape' ? 'pen' : 'shape');
+      const nowShape = toolMode === 'shape';
+      setToolMode(nowShape ? 'pen' : 'shape');
       log(`ツール: ${toolMode === 'shape' ? '図形（四角）' : 'ペン'}`);
     });
 
@@ -669,17 +1020,9 @@
     logToggle.addEventListener('click', () => {
       logPanel.classList.toggle('open');
     });
-    penToggle.addEventListener('click', () => {
-      penPanel.style.display = penPanel.style.display === 'block' ? 'none' : 'block';
-    });
+
     videoSettingsToggle.addEventListener('click', () => {
       videoPanel.style.display = videoPanel.style.display === 'block' ? 'none' : 'block';
-    });
-
-    // 手描き設定パネルのカラーピッカーで色を変えた場合も、パレットの選択表示を同期
-    penColorInput.addEventListener('input', () => {
-      setActiveSwatch(penColorInput.value);
-      if (toolMode !== 'eraser') setToolMode('pen');
     });
 
     audioEnabledCheckbox.addEventListener('change', () => {
@@ -793,10 +1136,13 @@
 
       drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
       uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
-      uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
 
       zoomRect = null;
       updateZoomTransform();
+
+      // キャンバスサイズ変更時はUndo履歴クリア
+      undoStack.length = 0;
+      updateUndoButton();
 
       log(`キャンバス: ${width}x${height} (DPR=${dpr} → 内部 ${drawCanvas.width}x${drawCanvas.height})`);
     }
@@ -830,9 +1176,12 @@
     function startDraw(e) {
       if (zoomMode) return;
       e.preventDefault();
+
+      // ★ 描画開始前にUndo用スナップショットを保存
+      pushUndo();
+
       const pos = getCanvasPos(e);
 
-      // 図形モード：ドラッグ開始点を記録してプレビュー開始
       if (toolMode === 'shape') {
         isDrawing = true;
         shapeDragStart = pos;
@@ -841,27 +1190,25 @@
         return;
       }
 
-      // ペン／消しゴム
       isDrawing = true;
       lastX = pos.x;
       lastY = pos.y;
     }
-
 
     function draw(e) {
       if (!isDrawing || zoomMode) return;
       e.preventDefault();
       const pos = getCanvasPos(e);
 
-      // 図形モード：ui-layer にプレビュー（四角）を描く
       if (toolMode === 'shape') {
         if (!shapeDragStart) return;
         lastShapePos = pos;
 
         uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
         uiCtx.save();
-        uiCtx.strokeStyle = penColorInput.value;
-        uiCtx.lineWidth = Math.max(1, Number(penSizeInput.value) || 3);
+        const pen = pens[activePenIndex];
+        uiCtx.strokeStyle = pen.color;
+        uiCtx.lineWidth = Math.max(1, pen.size);
         uiCtx.setLineDash([6, 4]);
         const x = Math.min(shapeDragStart.x, pos.x);
         const y = Math.min(shapeDragStart.y, pos.y);
@@ -872,9 +1219,14 @@
         return;
       }
 
-      // ペン／消しゴム：draw-layer に描く
-      drawCtx.strokeStyle = penColorInput.value;
-      drawCtx.lineWidth = Number(penSizeInput.value) || 3;
+      if (toolMode === 'eraser') {
+        drawCtx.strokeStyle = 'rgba(0,0,0,1)';
+        drawCtx.lineWidth = eraserSize;
+      } else {
+        const pen = pens[activePenIndex];
+        drawCtx.strokeStyle = pen.color;
+        drawCtx.lineWidth = pen.size;
+      }
       drawCtx.lineCap = 'round';
       drawCtx.lineJoin = 'round';
 
@@ -887,31 +1239,30 @@
       lastY = pos.y;
     }
 
-
     function endDraw(e) {
       if (!isDrawing) return;
       e.preventDefault();
 
-      // 図形モード：プレビューを本描画へ
       if (toolMode === 'shape' && shapeDragStart && lastShapePos) {
         const x = Math.min(shapeDragStart.x, lastShapePos.x);
         const y = Math.min(shapeDragStart.y, lastShapePos.y);
         const w = Math.abs(lastShapePos.x - shapeDragStart.x);
         const h = Math.abs(lastShapePos.y - shapeDragStart.y);
 
-        // ある程度以上のサイズのみ確定
         const minSize = 4;
         if (w >= minSize && h >= minSize) {
-          // 図形は必ず source-over で描く（消しゴムの合成モードの影響を受けない）
           const prevOp = drawCtx.globalCompositeOperation;
           drawCtx.globalCompositeOperation = 'source-over';
 
+          const pen = pens[activePenIndex];
           drawCtx.save();
-          drawCtx.strokeStyle = penColorInput.value;
-          drawCtx.lineWidth = Number(penSizeInput.value) || 3;
+          drawCtx.strokeStyle = pen.color;
+          drawCtx.lineWidth = pen.size;
           drawCtx.lineJoin = 'round';
-          drawCtx.fillStyle = '#ffffff';   // 白で塗りつぶし
+          // 白で塗りつぶした四角
+          drawCtx.fillStyle = '#ffffff';
           drawCtx.fillRect(x, y, w, h);
+          drawCtx.strokeRect(x, y, w, h);
           drawCtx.restore();
 
           drawCtx.globalCompositeOperation = prevOp;
@@ -925,7 +1276,6 @@
       isDrawing = false;
     }
 
-
     drawCanvas.addEventListener('mousedown', startDraw);
     drawCanvas.addEventListener('mousemove', draw);
     drawCanvas.addEventListener('mouseup', endDraw);
@@ -937,6 +1287,8 @@
     drawCanvas.addEventListener('touchcancel', endDraw, { passive: false });
 
     btnClear.addEventListener('click', () => {
+      // ★ 全消しもUndoできるように、実行前に保存
+      pushUndo();
       drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
       uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
       log('手描きレイヤーをクリアしました');
@@ -1517,6 +1869,7 @@
       e.preventDefault();
       finalizeZoom(null);
     }, { passive: false, capture: true });
+
   </script>
 </body>
 </html>
