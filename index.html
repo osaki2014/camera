@@ -4,1872 +4,1547 @@
   <meta charset="utf-8" />
   <title>カメラ＋手描き＋ズーム＋映像調整＋静止画／動画／TL</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="icon" href="data:,">
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont;
-      background: #000;
-      color: #fff;
+    html, body { margin:0; padding:0; height:100%; font-family:system-ui,-apple-system,BlinkMacSystemFont; background:#000; color:#fff;}
+    #app{ display:flex; flex-direction:column; height:100vh;}
+    header{
+      padding:8px 12px; font-size:14px; background:rgba(0,0,0,0.7);
+      display:flex; justify-content:space-between; align-items:center;
+      z-index:5; position:relative;
     }
-    #app {
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-    }
-    header {
-      padding: 8px 12px;
-      font-size: 14px;
-      background: rgba(0,0,0,0.7);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      z-index: 5;
-      position: relative;
-    }
-    /* タイトル＋QRボタンをまとめる左側 */
-    #header-left{
-      display:flex;
-      align-items:center;
-      gap:6px;
-      min-width:0;
-    }
-    header span.title {
-      font-weight: 600;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 50vw;
-    }
-    #header-right {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
+    #header-left{ display:flex; align-items:center; gap:6px; min-width:0;}
+    header span.title{ font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:50vw;}
+    #header-right{ display:flex; gap:8px; align-items:center;}
 
-    /* QRボタン（QRっぽいアイコン） */
     #qr-button{
-      width: 32px;
-      height: 32px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.25);
-      background: rgba(255,255,255,0.10);
-      color: #fff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      padding: 0;
+      width:32px; height:32px; border-radius:999px;
+      border:1px solid rgba(255,255,255,0.25);
+      background:rgba(255,255,255,0.10); color:#fff;
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer; padding:0;
     }
-    #qr-button svg{
-      width: 18px;
-      height: 18px;
-      display:block;
-    }
-    #qr-button:active{
-      transform: translateY(1px);
-    }
+    #qr-button svg{ width:18px; height:18px; display:block; }
+    #qr-button:active{ transform:translateY(1px); }
 
-    /* QRオーバーレイ（画面いっぱい） */
     #qr-overlay{
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.85);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 50;
+      position:fixed; inset:0; background:rgba(0,0,0,0.85);
+      display:none; align-items:center; justify-content:center; z-index:50;
     }
-    #qr-overlay.open{
-      display: flex;
-    }
+    #qr-overlay.open{ display:flex; }
     #qr-box{
-      background: #fff;
-      color: #000;
-      width: 100vw;
-      height: 100vh;
-      max-width: 100vw;
-      max-height: 100vh;
-      border-radius: 0;
-      display:flex;
-      flex-direction:column;
-      align-items:center;
-      justify-content:center;
-      text-align:center;
-      box-sizing:border-box;
-      padding: 16px;
+      background:#fff; color:#000; width:100vw; height:100vh;
+      border-radius:0; display:flex; flex-direction:column;
+      align-items:center; justify-content:center; text-align:center;
+      box-sizing:border-box; padding:16px;
     }
-    #qr-box h2{
-      margin: 0 0 8px;
-      font-size: 15px;
-    }
-    #qr-img{
-      width: min(80vw,80vh);
-      height: min(80vw,80vh);
-      display: block;
-      margin: 0 auto;
-    }
+    #qr-box h2{ margin:0 0 8px; font-size:15px;}
+    #qr-img{ width:min(80vw,80vh); height:min(80vw,80vh); display:block; margin:0 auto;}
     #qr-close{
-      margin-top: 8px;
-      padding: 6px 16px;
-      border-radius: 999px;
-      border: none;
-      background: #333;
-      color: #fff;
-      cursor: pointer;
-      font-size: 13px;
+      margin-top:8px; padding:6px 16px; border-radius:999px;
+      border:none; background:#333; color:#fff; cursor:pointer; font-size:13px;
     }
 
-    /* ヘッダ：色パレット（3色固定） */
-    #header-palette{
-      display:flex;
-      gap:6px;
-      align-items:center;
-      margin-right: 4px;
-    }
+    #header-palette{ display:flex; gap:6px; align-items:center; margin-right:4px;}
     .swatch-btn{
       position:relative;
-      width: 32px;
-      height: 32px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.55);
-      background: rgba(0,0,0,0.4);
-      padding: 0;
-      cursor: pointer;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      box-shadow: 0 0 0 1px rgba(0,0,0,0.35) inset;
+      width:32px; height:32px; border-radius:999px;
+      border:1px solid rgba(255,255,255,0.55);
+      background:rgba(0,0,0,0.4);
+      padding:0; cursor:pointer;
+      display:flex; align-items:center; justify-content:center;
+      box-shadow:0 0 0 1px rgba(0,0,0,0.35) inset;
     }
-    .swatch-btn.active{
-      outline: 2px solid rgba(125, 211, 252, 0.95);
-      outline-offset: 2px;
+    .swatch-btn.active{ outline:2px solid rgba(125,211,252,0.95); outline-offset:2px;}
+    .swatch-circle{ border-radius:50%; background:#fff; transition:width .15s ease,height .15s ease;}
+    .swatch-pen{ position:absolute; font-size:14px; pointer-events:none; text-shadow:0 0 2px rgba(0,0,0,0.6);}
+
+    .tool-toggle.active{ outline:2px solid rgba(125,211,252,0.95); outline-offset:2px;}
+
+    #camera-wrapper{
+      position:relative; flex:1; background:#000;
+      overflow:hidden;
+      touch-action:none;
     }
-    .swatch-circle{
-      border-radius:50%;
-      background:#fff;
-      transition: width 0.15s ease, height 0.15s ease;
+    #camera-inner{
+      position:absolute; inset:0;
+      transform-origin:0 0;
     }
-    .swatch-pen{
-      position:absolute;
-      font-size:14px;
+    #video{
+      position:absolute; inset:0; width:100%; height:100%;
+      object-fit:cover;
+    }
+    #draw-layer,#ui-layer{ position:absolute; inset:0;}
+    #draw-layer{ touch-action:none;}
+    #ui-layer{ pointer-events:none;}
+
+    /* テキストDOM（ズーム追従のため cameraInner内） */
+    #text-layer{
+      position:absolute; inset:0; z-index:3;
       pointer-events:none;
+    }
+    .text-box{
+      position:absolute; min-width:24px; min-height:18px;
+      pointer-events:auto;
+      user-select:none;
+      touch-action:none;
+    }
+    .text-content{
+      white-space:pre;
+      line-height:1.25;
       text-shadow:0 0 2px rgba(0,0,0,0.6);
     }
-
-    /* ヘッダ：ツール（消しゴム・図形など） */
-    .tool-toggle.active{
-      outline: 2px solid rgba(125, 211, 252, 0.95);
-      outline-offset: 2px;
+    .text-box.selected{
+      outline:2px dashed rgba(125,211,252,0.95);
+      outline-offset:2px;
     }
-
-    #camera-wrapper {
-      position: relative;
-      flex: 1;
-      background: #000;
-      overflow: hidden;
-      touch-action: none;
-    }
-    #camera-inner {
-      position: absolute;
-      inset: 0;
-      transform-origin: 0 0;
-    }
-    #video {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    #draw-layer,
-    #ui-layer {
-      position: absolute;
-      inset: 0;
-    }
-    #draw-layer {
-      touch-action: none;
-    }
-    #ui-layer {
-      pointer-events: none;
-    }
-
-    /* ▼ 下のツールバー（1行固定・幅に応じてアイコン自動縮小） */
-    #toolbar {
-      position: fixed;
-      left: 0;
-      right: 0;
-      bottom: 8px;
-      transform: none;
-      display: flex;
-      flex-wrap: nowrap;
-      justify-content: center;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 8px;
-      border-radius: 999px;
-      background: rgba(0,0,0,0.75);
-      backdrop-filter: blur(6px);
-      z-index: 20;
-      max-width: 100%;
-      box-sizing: border-box;
-    }
-    .tool-btn {
-      width: clamp(28px, 7vw, 40px);
-      height: clamp(28px, 7vw, 40px);
-      border-radius: 50%;
-      border: 1px solid rgba(255,255,255,0.25);
-      background: rgba(255,255,255,0.06);
-      color: #fff;
-      font-size: clamp(14px, 3vw, 20px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      padding: 0;
-      flex: 0 0 auto;
-    }
-    .tool-btn.small {
-      width: clamp(26px, 6.5vw, 36px);
-      height: clamp(26px, 6.5vw, 36px);
-      font-size: clamp(13px, 2.8vw, 18px);
-    }
-    .tool-btn:disabled {
-      opacity: 0.35;
-      cursor: default;
-    }
-    .tool-group-sep {
-      width: 4px;
-      flex: 0 0 auto;
-    }
-    .rec-timer {
-      font-size: 11px;
-      min-width: 40px;
-      text-align: center;
-      color: #eee;
-      flex: 0 0 auto;
-    }
-
-    /* フローティングパネル共通 */
-    .floating-panel {
-      position: fixed;
-      background: rgba(0,0,0,0.8);
-      padding: 6px 8px;
-      border-radius: 10px;
-      font-size: 11px;
-      color: #eee;
-      z-index: 25;
-      max-width: 260px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+    .resize-handle{
+      position:absolute; width:16px; height:16px;
+      right:-10px; bottom:-10px;
+      border-radius:4px;
+      background:rgba(125,211,252,0.95);
+      border:2px solid rgba(0,0,0,0.8);
+      cursor:nwse-resize;
       display:none;
     }
-    .floating-panel .panel-title {
-      font-weight: 600;
-      margin-bottom: 4px;
-      font-size: 11px;
+    .text-box.selected .resize-handle{ display:block; }
+
+    /* 編集エディタは cameraInner外（transform影響回避） */
+    #text-editor{
+      position:absolute;
+      z-index:100;
+      display:none;
+      pointer-events:auto;
+      box-sizing:border-box;
     }
-    .floating-panel label {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      margin-bottom: 3px;
-      white-space: nowrap;
-    }
-    .floating-panel input[type="number"] {
-      width: 50px;
-      font-size: 11px;
-    }
-    .floating-panel input[type="color"] {
-      width: 32px;
-      height: 18px;
-      padding: 0;
-      border: none;
-      background: transparent;
-    }
-    .floating-panel input[type="range"] {
-      width: 130px;
-    }
-    .floating-panel select {
-      font-size: 11px;
-      max-width: 150px;
+    #text-editor textarea{
+      width:100%; height:100%;
+      resize:none;
+      box-sizing:border-box;
+      border-radius:10px;
+      border:2px solid rgba(125,211,252,0.95);
+      background:rgba(0,0,0,0.55);
+      color:#fff;
+      padding:8px 10px;
+      outline:none;
+      box-shadow:0 8px 20px rgba(0,0,0,0.45);
     }
 
-    /* 映像設定パネル（右下） */
-    #video-panel {
-      right: 10px;
-      bottom: 84px;
+    #toolbar{
+      position:fixed; left:0; right:0; bottom:8px;
+      display:flex; flex-wrap:nowrap;
+      justify-content:center; align-items:center;
+      gap:6px; padding:6px 8px;
+      border-radius:999px;
+      background:rgba(0,0,0,0.75);
+      backdrop-filter:blur(6px);
+      z-index:20;
+      max-width:100%;
+      box-sizing:border-box;
+    }
+    .tool-btn{
+      width:clamp(28px,7vw,40px);
+      height:clamp(28px,7vw,40px);
+      border-radius:50%;
+      border:1px solid rgba(255,255,255,0.25);
+      background:rgba(255,255,255,0.06);
+      color:#fff;
+      font-size:clamp(14px,3vw,20px);
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer; padding:0; flex:0 0 auto;
+    }
+    .tool-btn.small{
+      width:clamp(26px,6.5vw,36px);
+      height:clamp(26px,6.5vw,36px);
+      font-size:clamp(13px,2.8vw,18px);
+    }
+    .tool-btn:disabled{ opacity:0.35; cursor:default;}
+    .tool-group-sep{ width:4px; flex:0 0 auto;}
+    .rec-timer{ font-size:11px; min-width:40px; text-align:center; color:#eee; flex:0 0 auto;}
+
+    .floating-panel{
+      position:fixed;
+      background:rgba(0,0,0,0.8);
+      padding:6px 8px;
+      border-radius:10px;
+      font-size:11px;
+      color:#eee;
+      z-index:25;
+      max-width:320px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.6);
+      display:none;
+    }
+    .floating-panel .panel-title{ font-weight:600; margin-bottom:4px; font-size:11px;}
+    .floating-panel label{
+      display:flex; align-items:center; gap:6px; margin-bottom:3px; white-space:nowrap;
+    }
+    .floating-panel input[type="number"]{ width:70px; font-size:11px;}
+    .floating-panel input[type="color"]{ width:32px; height:18px; padding:0; border:none; background:transparent;}
+    .floating-panel input[type="range"]{ width:130px;}
+    .floating-panel select{ font-size:11px; max-width:200px;}
+    .panel-row{ display:flex; gap:8px; align-items:center; margin-top:6px;}
+    .panel-btn{
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,0.25);
+      background:rgba(255,255,255,0.10);
+      color:#fff;
+      height:28px;
+      padding:0 10px;
+      cursor:pointer;
+      font-size:12px;
+    }
+    #video-panel{ right:10px; bottom:84px; }
+
+    #log-toggle,#btn-clear,#tool-eraser,#tool-shape,#btn-undo,#tool-text{
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,0.25);
+      background:rgba(255,255,255,0.10);
+      color:#fff;
+      width:40px; height:40px;
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer; font-size:20px; padding:0;
+    }
+    #btn-undo:disabled{ opacity:0.35; cursor:default;}
+
+    #btn-clear .eraser-icon{
+      display:block; width:22px; height:14px;
+      border-radius:3px;
+      background:linear-gradient(to bottom,#f5c37a 0 45%,#f5c37a 45% 50%,#365e9a 50% 100%);
+      box-shadow:0 0 0 1px rgba(0,0,0,0.25) inset, 0 1px 0 rgba(255,255,255,0.2);
+      margin-top:2px;
     }
 
-    /* ヘッダ小ボタン */
-    #log-toggle,
-    #btn-clear,
-    #tool-eraser,
-    #tool-shape,
-    #btn-undo {
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.25);
-      background: rgba(255,255,255,0.10);
-      color: #fff;
-      width: 40px;
-      height: 40px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      font-size: 20px;
-      padding: 0;
+    #log-panel{
+      position:fixed; left:10px; top:56px;
+      width:260px; max-height:50vh;
+      background:rgba(0,0,0,0.8);
+      border-radius:8px; padding:6px;
+      font-size:11px; color:#eee;
+      box-shadow:0 2px 8px rgba(0,0,0,0.6);
+      z-index:30; display:none;
     }
-    #btn-undo:disabled{
-      opacity:0.35;
-      cursor:default;
-    }
-    /* 黒板消しアイコン（全クリア） */
-    #btn-clear .eraser-icon {
-      display: block;
-      width: 22px;
-      height: 14px;
-      border-radius: 3px;
-      background: linear-gradient(
-        to bottom,
-        #f5c37a 0 45%,
-        #f5c37a 45% 50%,
-        #365e9a 50% 100%
-      );
-      box-shadow:
-        0 0 0 1px rgba(0,0,0,0.25) inset,
-        0 1px 0 rgba(255,255,255,0.2);
-      margin-top: 2px;
-    }
+    #log-panel.open{ display:block;}
+    #log{ max-height:40vh; overflow-y:auto; white-space:pre-line;}
 
-    /* ログパネル */
-    #log-panel {
-      position: fixed;
-      left: 10px;
-      top: 56px;
-      width: 260px;
-      max-height: 50vh;
-      background: rgba(0,0,0,0.8);
-      border-radius: 8px;
-      padding: 6px;
-      font-size: 11px;
-      color: #eee;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.6);
-      z-index: 30;
-      display: none;
+    #zoom-hint{
+      position:fixed; top:50%; left:50%;
+      transform:translate(-50%,-50%);
+      background:rgba(0,0,0,0.7);
+      padding:6px 10px;
+      border-radius:999px;
+      font-size:12px;
+      color:#fff;
+      z-index:25;
+      display:none;
+      pointer-events:none;
     }
-    #log-panel.open {
-      display: block;
-    }
-    #log {
-      max-height: 40vh;
-      overflow-y: auto;
-      white-space: pre-line;
-    }
-
-    /* ズーム選択中の案内テキスト */
-    #zoom-hint {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: rgba(0,0,0,0.7);
-      padding: 6px 10px;
-      border-radius: 999px;
-      font-size: 12px;
-      color: #fff;
-      z-index: 25;
-      display: none;
-      pointer-events: none;
-    }
-    #zoom-hint.visible {
-      display: block;
-    }
+    #zoom-hint.visible{ display:block;}
   </style>
 </head>
 <body>
-  <div id="app">
-    <header>
-      <div id="header-left">
-        <!-- QRボタン（QRっぽいSVGアイコン） -->
-        <button id="qr-button" title="このアプリのQRコードを表示" aria-label="QRコード">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <rect x="3" y="3" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/>
-            <rect x="5" y="5" width="3" height="3" fill="currentColor"/>
-            <rect x="14" y="3" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/>
-            <rect x="16" y="5" width="3" height="3" fill="currentColor"/>
-            <rect x="3" y="14" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/>
-            <rect x="5" y="16" width="3" height="3" fill="currentColor"/>
-            <rect x="14" y="14" width="3" height="3" fill="currentColor"/>
-            <rect x="18" y="14" width="3" height="3" fill="currentColor"/>
-            <rect x="14" y="18" width="3" height="3" fill="currentColor"/>
-          </svg>
-        </button>
-        <span class="title">カメラ＋手描き＋ズーム＋映像調整＋静止画／動画／TL</span>
+<div id="app">
+  <header>
+    <div id="header-left">
+      <button id="qr-button" title="このアプリのQRコードを表示" aria-label="QRコード">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="3" y="3" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/>
+          <rect x="5" y="5" width="3" height="3" fill="currentColor"/>
+          <rect x="14" y="3" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/>
+          <rect x="16" y="5" width="3" height="3" fill="currentColor"/>
+          <rect x="3" y="14" width="7" height="7" fill="none" stroke="currentColor" stroke-width="2"/>
+          <rect x="5" y="16" width="3" height="3" fill="currentColor"/>
+          <rect x="14" y="14" width="3" height="3" fill="currentColor"/>
+          <rect x="18" y="14" width="3" height="3" fill="currentColor"/>
+          <rect x="14" y="18" width="3" height="3" fill="currentColor"/>
+        </svg>
+      </button>
+      <span class="title">カメラ＋手描き＋ズーム＋映像調整＋静止画／動画／TL</span>
+    </div>
+    <div id="header-right">
+      <div id="header-palette" title="色パレット（白・赤・水色）">
+        <button class="swatch-btn" data-pen-index="0" title="ペン1"><span class="swatch-circle"></span><span class="swatch-pen">✏️</span></button>
+        <button class="swatch-btn" data-pen-index="1" title="ペン2"><span class="swatch-circle"></span><span class="swatch-pen">✏️</span></button>
+        <button class="swatch-btn" data-pen-index="2" title="ペン3"><span class="swatch-circle"></span><span class="swatch-pen">✏️</span></button>
       </div>
-      <div id="header-right">
-        <div id="header-palette" title="色パレット（白・赤・水色）">
-          <button class="swatch-btn" data-pen-index="0" title="ペン1">
-            <span class="swatch-circle"></span>
-            <span class="swatch-pen">✏️</span>
-          </button>
-          <button class="swatch-btn" data-pen-index="1" title="ペン2">
-            <span class="swatch-circle"></span>
-            <span class="swatch-pen">✏️</span>
-          </button>
-          <button class="swatch-btn" data-pen-index="2" title="ペン3">
-            <span class="swatch-circle"></span>
-            <span class="swatch-pen">✏️</span>
-          </button>
-        </div>
-        <button id="tool-eraser" class="tool-toggle" title="消しゴム（描線を削除）">🧽</button>
-        <button id="tool-shape" class="tool-toggle" title="図形（四角）">□</button>
-        <!-- ★ Undoボタン追加 -->
-        <button id="btn-undo" title="一つ戻す（Undo）">↶</button>
-        <button id="btn-clear" title="手描きクリア">
-          <span class="eraser-icon" aria-hidden="true"></span>
-        </button>
-        <button id="log-toggle" title="ログ表示／非表示">ℹ️</button>
-      </div>
-    </header>
+      <button id="tool-eraser" class="tool-toggle" title="消しゴム（描線を削除）">🧽</button>
+      <button id="tool-shape" class="tool-toggle" title="面（四角）">□</button>
+      <button id="tool-text" class="tool-toggle" title="テキスト">T</button>
+      <button id="btn-undo" title="一つ戻す（Undo）">↶</button>
+      <button id="btn-clear" title="手描きクリア"><span class="eraser-icon" aria-hidden="true"></span></button>
+      <button id="log-toggle" title="ログ表示／非表示">ℹ️</button>
+    </div>
+  </header>
 
-    <div id="camera-wrapper">
-      <div id="camera-inner">
-        <video id="video" autoplay playsinline></video>
-        <canvas id="draw-layer"></canvas>
-        <canvas id="ui-layer"></canvas>
-      </div>
+  <div id="camera-wrapper">
+    <div id="camera-inner">
+      <video id="video" autoplay playsinline></video>
+      <canvas id="draw-layer"></canvas>
+      <canvas id="ui-layer"></canvas>
+      <div id="text-layer"></div>
     </div>
 
-    <!-- 下のツールバー -->
-    <div id="toolbar">
-      <!-- カメラ -->
-      <button id="btn-start-camera" class="tool-btn" title="カメラ開始">🎦</button>
+    <div id="text-editor"><textarea id="text-editor-ta"></textarea></div>
+  </div>
 
-      <div class="tool-group-sep"></div>
+  <div id="toolbar">
+    <button id="btn-start-camera" class="tool-btn" title="カメラ開始">🎦</button>
+    <div class="tool-group-sep"></div>
+    <button id="btn-shot" class="tool-btn" title="写真撮影（PNG）" disabled>📷</button>
+    <div class="tool-group-sep"></div>
+    <button id="btn-start-rec" class="tool-btn small" title="動画録画開始" disabled>⏺</button>
+    <button id="btn-stop-rec" class="tool-btn small" title="動画録画停止" disabled>⏹</button>
+    <span id="rec-timer" class="rec-timer">00:00</span>
+    <div class="tool-group-sep"></div>
+    <button id="btn-start-tl" class="tool-btn small" title="TL録画開始" disabled>⏱</button>
+    <button id="btn-stop-tl" class="tool-btn small" title="TL録画停止" disabled>⏹</button>
+    <span id="tl-timer" class="rec-timer">00:00</span>
+    <div class="tool-group-sep"></div>
+    <button id="btn-zoom-select" class="tool-btn small" title="ズーム領域を選択">🔍</button>
+    <button id="btn-zoom-reset" class="tool-btn small" title="ズーム解除">🔁</button>
+    <div class="tool-group-sep" style="width:8px;"></div>
+    <button id="video-settings-toggle" class="tool-btn small" title="映像設定の表示/非表示">🎚</button>
+  </div>
 
-      <!-- 静止画 -->
-      <button id="btn-shot" class="tool-btn" title="写真撮影（PNG）" disabled>📷</button>
+  <div id="pen-config-0" class="floating-panel">
+    <div class="panel-title">ペン1</div>
+    <label>色 <input type="color" id="pen-color-0" value="#ffffff"></label>
+    <label>太さ <input type="number" id="pen-size-0" min="1" max="40" value="10"></label>
+  </div>
+  <div id="pen-config-1" class="floating-panel">
+    <div class="panel-title">ペン2</div>
+    <label>色 <input type="color" id="pen-color-1" value="#ff0000"></label>
+    <label>太さ <input type="number" id="pen-size-1" min="1" max="40" value="10"></label>
+  </div>
+  <div id="pen-config-2" class="floating-panel">
+    <div class="panel-title">ペン3</div>
+    <label>色 <input type="color" id="pen-color-2" value="#7dd3fc"></label>
+    <label>太さ <input type="number" id="pen-size-2" min="1" max="40" value="10"></label>
+  </div>
 
-      <div class="tool-group-sep"></div>
+  <div id="shape-config" class="floating-panel">
+    <div class="panel-title">面（四角）</div>
+    <label>色（塗り＆輪郭 共通） <input type="color" id="shape-color" value="#ffffff"></label>
+    <div style="color:#ccc;margin-top:4px;">※輪郭線は常に10px固定です</div>
+  </div>
 
-      <!-- 通常動画 -->
-      <button id="btn-start-rec" class="tool-btn small" title="動画録画開始" disabled>⏺</button>
-      <button id="btn-stop-rec" class="tool-btn small" title="動画録画停止" disabled>⏹</button>
-      <span id="rec-timer" class="rec-timer">00:00</span>
-
-      <div class="tool-group-sep"></div>
-
-      <!-- タイムラプス -->
-      <button id="btn-start-tl" class="tool-btn small" title="TL録画開始" disabled>⏱</button>
-      <button id="btn-stop-tl" class="tool-btn small" title="TL録画停止" disabled>⏹</button>
-      <span id="tl-timer" class="rec-timer">00:00</span>
-
-      <div class="tool-group-sep"></div>
-
-      <!-- ズーム -->
-      <button id="btn-zoom-select" class="tool-btn small" title="ズーム領域を選択">🔍</button>
-      <button id="btn-zoom-reset" class="tool-btn small" title="ズーム解除">🔁</button>
-
-      <div class="tool-group-sep" style="width:8px;"></div>
-
-      <!-- 映像設定アイコン -->
-      <button id="video-settings-toggle" class="tool-btn small" title="映像設定の表示/非表示">🎚</button>
+  <div id="text-config" class="floating-panel">
+    <div class="panel-title">テキスト（選択中）</div>
+    <div style="color:#ccc;margin-bottom:6px;">
+      ・Tツールで追加（クリック）<br>
+      ・選択後：ドラッグで移動 / 右下ハンドルで拡大縮小 / ここで色・フォント・サイズ変更<br>
+      ・ダブルクリック（or ダブルタップ）で再編集
     </div>
-
-    <!-- ペン設定パネル（3つ） -->
-    <div id="pen-config-0" class="floating-panel">
-      <div class="panel-title">ペン1</div>
-      <label>色
-        <input type="color" id="pen-color-0" value="#ffffff">
-      </label>
-      <label>太さ
-        <input type="number" id="pen-size-0" min="1" max="40" value="10">
-      </label>
-    </div>
-    <div id="pen-config-1" class="floating-panel">
-      <div class="panel-title">ペン2</div>
-      <label>色
-        <input type="color" id="pen-color-1" value="#ff0000">
-      </label>
-      <label>太さ
-        <input type="number" id="pen-size-1" min="1" max="40" value="10">
-      </label>
-    </div>
-    <div id="pen-config-2" class="floating-panel">
-      <div class="panel-title">ペン3</div>
-      <label>色
-        <input type="color" id="pen-color-2" value="#7dd3fc">
-      </label>
-      <label>太さ
-        <input type="number" id="pen-size-2" min="1" max="40" value="10">
-      </label>
-    </div>
-
-    <!-- 消しゴム設定パネル -->
-    <div id="eraser-config" class="floating-panel">
-      <div class="panel-title">消しゴム</div>
-      <label>太さ
-        <input type="number" id="eraser-size" min="5" max="80" value="30">
-      </label>
-    </div>
-
-    <!-- 映像＋録画設定パネル -->
-    <div id="video-panel" class="floating-panel">
-      <div class="panel-title">録画／タイムラプス設定</div>
-      <label>動画FPS
-        <input type="number" id="video-fps" min="1" max="60" value="30">
-      </label>
-      <label>TL-FPS
-        <input type="number" id="tl-fps" min="1" max="60" value="10">
-      </label>
-      <label>TL間隔(ms)
-        <input type="number" id="tl-interval" min="100" value="500">
-      </label>
-
-      <div class="panel-title" style="margin-top:4px;">映像設定</div>
-      <label>明るさ
-        <input id="brightness" type="range" min="0.2" max="2" step="0.01" value="1">
-      </label>
-      <label>コントラスト
-        <input id="contrast" type="range" min="0.5" max="2" step="0.01" value="1">
-      </label>
-      <label>露出
-        <input id="exposure" type="range" min="-2" max="2" step="0.1" value="0">
-      </label>
-      <label>色温度
-        <input id="color-temp" type="range" min="-1" max="1" step="0.1" value="0">
-      </label>
-      <label>シャープ
-        <input id="sharpness" type="range" min="0" max="1" step="0.1" value="0">
-      </label>
-      <label>
-        <input id="line-boost" type="checkbox">
-        線・文字くっきり
-      </label>
-      <label>
-        <input id="noise-reduce" type="checkbox">
-        ノイズ軽減（ズーム時のもやもや抑制）
-      </label>
-
-      <div class="panel-title" style="margin-top:4px;">表示反転</div>
-      <label>
-        <input id="flip-h" type="checkbox" checked>
-        左右反転（ミラー）
-      </label>
-      <label>
-        <input id="flip-v" type="checkbox">
-        上下反転
-      </label>
-
-      <div class="panel-title" style="margin-top:4px;">カメラ選択</div>
-      <label>カメラ
-        <select id="camera-select" disabled></select>
-      </label>
-
-      <div class="panel-title" style="margin-top:4px;">音声</div>
-      <label>
-        <input id="audio-enabled" type="checkbox">
-        動画にマイク音声を入れる
-      </label>
-      <div style="margin-top:3px;color:#ccc;">
-        ※デフォルトは音声OFFです。<br>
-        ※「線・文字くっきり」「ノイズ軽減」は主に保存画像／録画動画に反映されます。<br>
-        ※ブラウザ録画は WebM 形式で保存されます。mp4/mov が必要な場合は外部ツールで変換してください。
-      </div>
-    </div>
-
-    <!-- ログパネル -->
-    <div id="log-panel">
-      <div style="font-weight:600;margin-bottom:4px;">ログ</div>
-      <div id="log"></div>
-      <div style="margin-top:4px;color:#ccc;">
-        ※ズーム時は、録画・TLもプレビューと同じ見え方で保存します。<br>
-        ※「線・文字くっきり」はノートやプリント撮影向きです。
-      </div>
-    </div>
-
-    <!-- ズーム選択中のヒント -->
-    <div id="zoom-hint">ズームしたい範囲をドラッグ（指／ペン／マウス）</div>
-
-    <!-- QRオーバーレイ -->
-    <div id="qr-overlay">
-      <div id="qr-box">
-        <h2>このアプリのQRコード</h2>
-        <img id="qr-img" alt="https://gensai-rika.github.io/camera/ のQRコード">
-        <div style="font-size:11px;margin-top:4px;">スマートフォンで読み込んでください</div>
-        <button id="qr-close">閉じる</button>
-      </div>
+    <label>色 <input type="color" id="text-color" value="#ffffff"></label>
+    <label>サイズ <input type="number" id="text-size" min="8" max="200" value="36"></label>
+    <label>フォント
+      <select id="text-font">
+        <option value="system-ui, -apple-system, BlinkMacSystemFont">システム</option>
+        <option value="sans-serif">sans-serif</option>
+        <option value="serif">serif</option>
+        <option value="monospace">monospace</option>
+        <option value='"Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif'>日本語ゴシック</option>
+        <option value='"Hiragino Mincho ProN", "Yu Mincho", serif'>日本語明朝</option>
+      </select>
+    </label>
+    <div class="panel-row">
+      <button id="text-edit-btn" class="panel-btn" title="選択中テキストを編集">編集</button>
+      <button id="text-delete-btn" class="panel-btn" title="選択中テキストを削除">削除</button>
     </div>
   </div>
 
-  <script>
-    const video = document.getElementById('video');
-    const drawCanvas = document.getElementById('draw-layer');
-    const drawCtx = drawCanvas.getContext('2d');
-    const uiCanvas = document.getElementById('ui-layer');
-    const uiCtx = uiCanvas.getContext('2d');
-    const cameraWrapper = document.getElementById('camera-wrapper');
-    const cameraInner = document.getElementById('camera-inner');
+  <div id="eraser-config" class="floating-panel">
+    <div class="panel-title">消しゴム</div>
+    <label>太さ <input type="number" id="eraser-size" min="5" max="80" value="30"></label>
+  </div>
 
-    const btnStartCamera = document.getElementById('btn-start-camera');
-    const btnClear = document.getElementById('btn-clear');
-    const btnUndo = document.getElementById('btn-undo'); // ★ Undo ボタン
-    const btnShot = document.getElementById('btn-shot');
-    const btnStartRec = document.getElementById('btn-start-rec');
-    const btnStopRec = document.getElementById('btn-stop-rec');
-    const btnStartTl = document.getElementById('btn-start-tl');
-    const btnStopTl = document.getElementById('btn-stop-tl');
-    const btnZoomSelect = document.getElementById('btn-zoom-select');
-    const btnZoomReset = document.getElementById('btn-zoom-reset');
-    const videoSettingsToggle = document.getElementById('video-settings-toggle');
+  <div id="video-panel" class="floating-panel">
+    <div class="panel-title">録画／タイムラプス設定</div>
+    <label>動画FPS <input type="number" id="video-fps" min="1" max="60" value="30"></label>
+    <label>TL-FPS <input type="number" id="tl-fps" min="1" max="60" value="10"></label>
+    <label>TL間隔(ms) <input type="number" id="tl-interval" min="100" value="500"></label>
 
-    const videoPanel = document.getElementById('video-panel');
+    <div class="panel-title" style="margin-top:4px;">映像設定</div>
+    <label>明るさ <input id="brightness" type="range" min="0.2" max="2" step="0.01" value="1"></label>
+    <label>コントラスト <input id="contrast" type="range" min="0.5" max="2" step="0.01" value="1"></label>
+    <label>露出 <input id="exposure" type="range" min="-2" max="2" step="0.1" value="0"></label>
+    <label>色温度 <input id="color-temp" type="range" min="-1" max="1" step="0.1" value="0"></label>
+    <label>シャープ <input id="sharpness" type="range" min="0" max="1" step="0.1" value="0"></label>
+    <label><input id="line-boost" type="checkbox"> 線・文字くっきり</label>
+    <label><input id="noise-reduce" type="checkbox"> ノイズ軽減（ズーム時のもやもや抑制）</label>
 
-    const headerPalette = document.getElementById('header-palette');
-    const swatchButtons = Array.from(document.querySelectorAll('.swatch-btn'));
-    const toolEraserBtn = document.getElementById('tool-eraser');
-    const toolShapeBtn = document.getElementById('tool-shape');
+    <div class="panel-title" style="margin-top:4px;">表示反転</div>
+    <label><input id="flip-h" type="checkbox" checked> 左右反転（ミラー）</label>
+    <label><input id="flip-v" type="checkbox"> 上下反転</label>
 
-    const videoFpsInput = document.getElementById('video-fps');
-    const tlFpsInput = document.getElementById('tl-fps');
-    const tlIntervalInput = document.getElementById('tl-interval');
+    <div class="panel-title" style="margin-top:4px;">カメラ選択</div>
+    <label>カメラ <select id="camera-select" disabled></select></label>
 
-    const brightnessSlider = document.getElementById('brightness');
-    const contrastSlider = document.getElementById('contrast');
-    const exposureSlider = document.getElementById('exposure');
-    const colorTempSlider = document.getElementById('color-temp');
-    const sharpnessSlider = document.getElementById('sharpness');
-    const lineBoostCheckbox = document.getElementById('line-boost');
-    const noiseReduceCheckbox = document.getElementById('noise-reduce');
-    const flipHCheckbox = document.getElementById('flip-h');
-    const flipVCheckbox = document.getElementById('flip-v');
-    const audioEnabledCheckbox = document.getElementById('audio-enabled');
-    const cameraSelect = document.getElementById('camera-select');
+    <div class="panel-title" style="margin-top:4px;">音声</div>
+    <label><input id="audio-enabled" type="checkbox"> 動画にマイク音声を入れる</label>
+    <div style="margin-top:3px;color:#ccc;">
+      ※デフォルトは音声OFFです。<br>
+      ※「線・文字くっきり」「ノイズ軽減」は主に保存画像／録画動画に反映されます。<br>
+      ※ブラウザ録画は WebM 形式で保存されます。
+    </div>
+  </div>
 
-    const logEl = document.getElementById('log');
-    const logPanel = document.getElementById('log-panel');
-    const logToggle = document.getElementById('log-toggle');
-    const zoomHint = document.getElementById('zoom-hint');
+  <div id="log-panel">
+    <div style="font-weight:600;margin-bottom:4px;">ログ</div>
+    <div id="log"></div>
+    <div style="margin-top:4px;color:#ccc;">
+      ※ズーム時は、録画・TLもプレビューと同じ見え方で保存します。<br>
+      ※「線・文字くっきり」はノートやプリント撮影向きです。
+    </div>
+  </div>
 
-    const recTimerEl = document.getElementById('rec-timer');
-    const tlTimerEl = document.getElementById('tl-timer');
+  <div id="zoom-hint">ズームしたい範囲をドラッグ（指／ペン／マウス）</div>
 
-    // QR関連
-    const qrButton = document.getElementById('qr-button');
-    const qrOverlay = document.getElementById('qr-overlay');
-    const qrImg = document.getElementById('qr-img');
-    const qrClose = document.getElementById('qr-close');
-    const QR_URL = 'https://gensai-rika.github.io/camera/';
+  <div id="qr-overlay">
+    <div id="qr-box">
+      <h2>このアプリのQRコード</h2>
+      <img id="qr-img" alt="https://gensai-rika.github.io/camera/ のQRコード">
+      <div style="font-size:11px;margin-top:4px;">スマートフォンで読み込んでください</div>
+      <button id="qr-close">閉じる</button>
+    </div>
+  </div>
+</div>
 
-    qrButton.addEventListener('click', () => {
-      const encoded = encodeURIComponent(QR_URL);
-      qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encoded}`;
-      qrOverlay.classList.add('open');
-    });
-    qrClose.addEventListener('click', () => {
-      qrOverlay.classList.remove('open');
-    });
-    qrOverlay.addEventListener('click', (e) => {
-      if (e.target === qrOverlay) {
-        qrOverlay.classList.remove('open');
-      }
-    });
+<script>
+  const video = document.getElementById('video');
+  const drawCanvas = document.getElementById('draw-layer');
+  const uiCanvas = document.getElementById('ui-layer');
+  const drawCtx = drawCanvas.getContext('2d', { willReadFrequently: true });
+  const uiCtx = uiCanvas.getContext('2d');
 
-    let cameraStream = null;
-    let currentVideoDeviceId = null;
-    let hasInitializedCamera = false;
+  const cameraWrapper = document.getElementById('camera-wrapper');
+  const cameraInner = document.getElementById('camera-inner');
 
-    const compositeCanvas = document.createElement('canvas');
-    const compositeCtx = compositeCanvas.getContext('2d');
+  const textLayer = document.getElementById('text-layer');
+  const textEditor = document.getElementById('text-editor');
+  const textEditorTa = document.getElementById('text-editor-ta');
 
-    const supportsMediaRecorder = typeof MediaRecorder !== 'undefined';
-    let supportsCaptureStream = false;
-    try {
-      supportsCaptureStream = typeof compositeCanvas.captureStream === 'function';
-    } catch (e) {
-      supportsCaptureStream = false;
+  const btnStartCamera = document.getElementById('btn-start-camera');
+  const btnClear = document.getElementById('btn-clear');
+  const btnUndo = document.getElementById('btn-undo');
+  const btnShot = document.getElementById('btn-shot');
+  const btnZoomSelect = document.getElementById('btn-zoom-select');
+  const btnZoomReset = document.getElementById('btn-zoom-reset');
+  const videoSettingsToggle = document.getElementById('video-settings-toggle');
+  const videoPanel = document.getElementById('video-panel');
+
+  const swatchButtons = Array.from(document.querySelectorAll('.swatch-btn'));
+  const toolEraserBtn = document.getElementById('tool-eraser');
+  const toolShapeBtn = document.getElementById('tool-shape');
+  const toolTextBtn  = document.getElementById('tool-text');
+
+  const shapeConfigPanel = document.getElementById('shape-config');
+  const shapeColorInput = document.getElementById('shape-color');
+
+  const textConfigPanel = document.getElementById('text-config');
+  const textColorInput = document.getElementById('text-color');
+  const textSizeInput = document.getElementById('text-size');
+  const textFontSelect = document.getElementById('text-font');
+  const textEditBtn = document.getElementById('text-edit-btn');
+  const textDeleteBtn = document.getElementById('text-delete-btn');
+
+  const brightnessSlider = document.getElementById('brightness');
+  const contrastSlider = document.getElementById('contrast');
+  const exposureSlider = document.getElementById('exposure');
+  const colorTempSlider = document.getElementById('color-temp');
+  const sharpnessSlider = document.getElementById('sharpness');
+  const lineBoostCheckbox = document.getElementById('line-boost');
+  const noiseReduceCheckbox = document.getElementById('noise-reduce');
+  const flipHCheckbox = document.getElementById('flip-h');
+  const flipVCheckbox = document.getElementById('flip-v');
+  const audioEnabledCheckbox = document.getElementById('audio-enabled');
+  const cameraSelect = document.getElementById('camera-select');
+
+  const logEl = document.getElementById('log');
+  const logPanel = document.getElementById('log-panel');
+  const logToggle = document.getElementById('log-toggle');
+  const zoomHint = document.getElementById('zoom-hint');
+
+  // QR
+  const qrButton = document.getElementById('qr-button');
+  const qrOverlay = document.getElementById('qr-overlay');
+  const qrImg = document.getElementById('qr-img');
+  const qrClose = document.getElementById('qr-close');
+  const QR_URL = 'https://gensai-rika.github.io/camera/';
+  qrButton.addEventListener('click', () => {
+    const encoded = encodeURIComponent(QR_URL);
+    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encoded}`;
+    qrOverlay.classList.add('open');
+  });
+  qrClose.addEventListener('click', () => qrOverlay.classList.remove('open'));
+  qrOverlay.addEventListener('click', (e) => { if (e.target === qrOverlay) qrOverlay.classList.remove('open'); });
+
+  function log(msg){
+    const now = new Date();
+    const time = now.toLocaleTimeString();
+    logEl.textContent = `[${time}] ${msg}\n` + logEl.textContent;
+  }
+
+  // ===== カメラ =====
+  let cameraStream = null;
+  let currentVideoDeviceId = null;
+  let hasInitializedCamera = false;
+
+  async function populateCameraList(){
+    try{
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(d => d.kind === 'videoinput');
+      cameraSelect.innerHTML = '';
+      videoDevices.forEach((d, idx) => {
+        const opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.label || `カメラ ${idx+1}`;
+        cameraSelect.appendChild(opt);
+      });
+      if (!currentVideoDeviceId && videoDevices[0]) currentVideoDeviceId = videoDevices[0].deviceId;
+      if (currentVideoDeviceId) cameraSelect.value = currentVideoDeviceId;
+      cameraSelect.disabled = videoDevices.length <= 1;
+    }catch(e){ console.log(e); }
+  }
+
+  let audioEnabled = false;
+  audioEnabledCheckbox.checked = false;
+  audioEnabledCheckbox.addEventListener('change', ()=>{
+    audioEnabled = audioEnabledCheckbox.checked;
+    log(`音声録音: ${audioEnabled ? 'ON':'OFF'}`);
+    if (cameraStream) cameraStream.getAudioTracks().forEach(t => t.enabled = audioEnabled);
+  });
+
+  async function initCamera(deviceId=null){
+    try{
+      if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
+      const constraints = {
+        video: deviceId
+          ? { deviceId:{ exact:deviceId }, width:{ ideal:1920 }, height:{ ideal:1080 } }
+          : { width:{ ideal:1920 }, height:{ ideal:1080 } },
+        audio: true
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      cameraStream = stream;
+      hasInitializedCamera = true;
+      cameraStream.getAudioTracks().forEach(t=> t.enabled = audioEnabled);
+      video.srcObject = cameraStream;
+      log(deviceId ? 'カメラを切り替えました':'カメラを開始しました');
+
+      video.addEventListener('loadedmetadata', ()=>{
+        resizeCanvases();
+        btnShot.disabled = false;
+      }, { once:true });
+
+      btnStartCamera.disabled = true;
+      await populateCameraList();
+    }catch(e){
+      console.error(e);
+      log('カメラが許可されなかったか、選択したカメラが利用できませんでした');
     }
+  }
+  btnStartCamera.addEventListener('click', ()=> initCamera(currentVideoDeviceId));
+  cameraSelect.addEventListener('change', ()=>{
+    currentVideoDeviceId = cameraSelect.value;
+    if (hasInitializedCamera) initCamera(currentVideoDeviceId);
+  });
 
-    drawCtx.imageSmoothingEnabled = false;
-    uiCtx.imageSmoothingEnabled = false;
-    compositeCtx.imageSmoothingEnabled = false;
+  // ===== Undo（draw + text）=====
+  const undoStack = [];
+  const maxUndo = 50;
+  function cloneTextItems(arr){ return arr.map(t => ({...t})); }
+  function updateUndoButton(){ btnUndo.disabled = undoStack.length===0; }
 
-    let isDrawing = false;
-    let lastX = 0;
-    let lastY = 0;
-
-    // ===== ツール状態（ペン／消しゴム／図形） =====
-    let toolMode = 'pen'; // 'pen' | 'eraser' | 'shape'
-    let shapeDragStart = null;
-    let lastShapePos = null;
-
-    // ペン3本＋消しゴムの独立設定
-    const pens = [
-      { color:'#ffffff', size:10 },
-      { color:'#ff0000', size:10 },
-      { color:'#7dd3fc', size:10 }
-    ];
-    let activePenIndex = 1; // デフォルト赤ペン
-    let eraserSize = 30;    // 消しゴム太さデフォルト
-
-    const penConfigs = [
-      {
-        panel: document.getElementById('pen-config-0'),
-        colorInput: document.getElementById('pen-color-0'),
-        sizeInput: document.getElementById('pen-size-0')
-      },
-      {
-        panel: document.getElementById('pen-config-1'),
-        colorInput: document.getElementById('pen-color-1'),
-        sizeInput: document.getElementById('pen-size-1')
-      },
-      {
-        panel: document.getElementById('pen-config-2'),
-        colorInput: document.getElementById('pen-color-2'),
-        sizeInput: document.getElementById('pen-size-2')
-      }
-    ];
-    const eraserConfigPanel = document.getElementById('eraser-config');
-    const eraserSizeInput = document.getElementById('eraser-size');
-
-    let openPenConfigIndex = null;
-    let eraserConfigOpen = false;
-
-    let recorder = null;
-    let recordedChunks = [];
-    let recordingMode = null;
-    let animationId = null;
-    let lastTlTime = 0;
-    let tlIntervalMs = 500;
-
-    let recStartTime = null;
-    let tlStartTime = null;
-    let recTimerId = null;
-    let tlTimerId = null;
-
-    let zoomMode = false;
-    let zoomRect = null;
-    let zoomDragStart = null;
-    let lastZoomPos = null;
-
-    const settings = {
-      brightness: 1,
-      contrast: 1,
-      exposure: 0,
-      colorTemp: 0,
-      sharpness: 0,
-      lineBoost: false,
-      noiseReduce: false
-    };
-    let videoFilterString = 'brightness(1) contrast(1)';
-    let flipH = true;
-    let flipV = false;
-
-    let audioEnabled = false;
-    audioEnabledCheckbox.checked = false;
-
-    // ===== Undo スタック =====
-    const undoStack = [];
-    const maxUndo = 50;
-
-    function updateUndoButton() {
-      btnUndo.disabled = undoStack.length === 0;
-    }
-
-    function pushUndo() {
-      if (!drawCanvas.width || !drawCanvas.height) return;
-      try {
-        const snapshot = drawCtx.getImageData(0, 0, drawCanvas.width, drawCanvas.height);
-        undoStack.push(snapshot);
-        if (undoStack.length > maxUndo) {
-          undoStack.shift();
-        }
-        updateUndoButton();
-      } catch (e) {
-        console.error('pushUndo error', e);
-      }
-    }
-
-    function performUndo() {
-      if (!undoStack.length) return;
-      try {
-        const snapshot = undoStack.pop();
-        drawCtx.putImageData(snapshot, 0, 0);
-        uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
-        shapeDragStart = null;
-        lastShapePos = null;
-        log('1つ前の描画に戻しました');
-      } catch (e) {
-        console.error('performUndo error', e);
-      }
+  function pushUndo(){
+    if (!drawCanvas.width || !drawCanvas.height) return;
+    try{
+      const snapshot = drawCtx.getImageData(0,0,drawCanvas.width,drawCanvas.height);
+      undoStack.push({ img:snapshot, texts:cloneTextItems(textItems), selected:selectedTextId, zoom: {...zoomTransform} });
+      if (undoStack.length > maxUndo) undoStack.shift();
       updateUndoButton();
-    }
-
-    btnUndo.addEventListener('click', () => {
-      performUndo();
-    });
+    }catch(e){ console.error(e); }
+  }
+  function performUndo(){
+    if (!undoStack.length) return;
+    try{
+      const s = undoStack.pop();
+      drawCtx.putImageData(s.img,0,0);
+      textItems = cloneTextItems(s.texts);
+      selectedTextId = s.selected || null;
+      hideTextEditor();
+      uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height);
+      renderTextLayer();     // 再構築はUndo時のみOK
+      log('1つ前の状態に戻しました');
+    }catch(e){ console.error(e); }
     updateUndoButton();
+  }
+  btnUndo.addEventListener('click', performUndo);
+  updateUndoButton();
 
-    // ===== ログ =====
-    function log(msg) {
-      const now = new Date();
-      const time = now.toLocaleTimeString();
-      logEl.textContent = `[${time}] ${msg}\n` + logEl.textContent;
-    }
+  // ===== ズーム（先に宣言してTDZ回避）=====
+  let zoomMode = false;
+  let zoomRect = null;
+  let zoomDragStart = null;
+  let lastZoomPos = null;
 
-    // ===== パネル位置調整（アイコンの真下に表示） =====
-    function showPanelUnder(panel, anchorEl) {
-      if (!panel || !anchorEl) return;
-      panel.style.display = 'block';
-      panel.style.visibility = 'hidden';
+  // ★ 今のズーム変換（cameraInnerの transform を逆算するため保持）
+  let zoomTransform = { s:1, tx:0, ty:0 };
 
-      const rect = anchorEl.getBoundingClientRect();
-      const pRect = panel.getBoundingClientRect();
+  // ===== サイズ調整 =====
+  function resizeCanvases(){
+    const rect = cameraWrapper.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+    const dpr = window.devicePixelRatio || 1;
 
-      let left = rect.left;
-      if (left + pRect.width > window.innerWidth - 8) {
-        left = window.innerWidth - pRect.width - 8;
-      }
-      if (left < 8) left = 8;
-
-      const top = rect.bottom + 4;
-
-      panel.style.left = `${left}px`;
-      panel.style.top = `${top}px`;
-      panel.style.visibility = 'visible';
-    }
-    function hidePanel(panel) {
-      if (!panel) return;
-      panel.style.display = 'none';
-    }
-
-    // ===== ペンアイコンの見た目更新（円サイズのみ太さ反映） =====
-    function updateSwatchVisual(index) {
-      const btn = swatchButtons[index];
-      if (!btn) return;
-      const circle = btn.querySelector('.swatch-circle');
-      if (!circle) return;
-      const pen = pens[index];
-      circle.style.background = pen.color;
-
-      const minSize = 10;
-      const maxSize = 26;
-      const minWidth = 1;
-      const maxWidth = 40;
-      const t = Math.max(minWidth, Math.min(maxWidth, pen.size));
-      const ratio = (t - minWidth) / (maxWidth - minWidth);
-      const size = minSize + (maxSize - minSize) * ratio;
-      circle.style.width = `${size}px`;
-      circle.style.height = `${size}px`;
-    }
-    function updateAllSwatches() {
-      pens.forEach((_, idx) => updateSwatchVisual(idx));
-    }
-
-    // ===== ツール切り替え =====
-    function setToolMode(mode) {
-      toolMode = mode;
-      toolEraserBtn.classList.toggle('active', mode === 'eraser');
-      toolShapeBtn.classList.toggle('active', mode === 'shape');
-
-      if (mode !== 'shape') {
-        shapeDragStart = null;
-        lastShapePos = null;
-        uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
-      }
-
-      if (mode === 'eraser') {
-        drawCtx.globalCompositeOperation = 'destination-out';
-      } else {
-        drawCtx.globalCompositeOperation = 'source-over';
-      }
-    }
-
-    function setActivePen(index) {
-      activePenIndex = index;
-      swatchButtons.forEach(btn => {
-        const i = Number(btn.dataset.penIndex);
-        btn.classList.toggle('active', i === index);
-      });
-      if (toolMode === 'eraser') {
-        // 消しゴムモードのままでもOK
-      }
-    }
-
-    // 初期状態：赤ペン／10px／消しゴム30px
-    setActivePen(1);
-    updateAllSwatches();
-    eraserSize = 30;
-    eraserSizeInput.value = 30;
-    setToolMode('pen');
-
-    // ペン設定パネルとデータの同期
-    pens.forEach((pen, idx) => {
-      penConfigs[idx].colorInput.value = pen.color;
-      penConfigs[idx].sizeInput.value = pen.size;
-      penConfigs[idx].colorInput.addEventListener('input', () => {
-        pen.color = penConfigs[idx].colorInput.value;
-        updateSwatchVisual(idx);
-        log(`ペン${idx+1} 色変更: ${pen.color}`);
-      });
-      penConfigs[idx].sizeInput.addEventListener('input', () => {
-        const v = Number(penConfigs[idx].sizeInput.value) || 1;
-        pen.size = v;
-        updateSwatchVisual(idx);
-        log(`ペン${idx+1} 太さ変更: ${v}px`);
-      });
+    [drawCanvas, uiCanvas].forEach(c=>{
+      c.width = width*dpr;
+      c.height = height*dpr;
+      c.style.width = width+'px';
+      c.style.height = height+'px';
     });
 
-    // 消しゴム設定
-    eraserSizeInput.addEventListener('input', () => {
-      const v = Number(eraserSizeInput.value) || 1;
-      eraserSize = v;
-      log(`消しゴム 太さ変更: ${v}px`);
+    drawCtx.setTransform(1,0,0,1,0,0);
+    uiCtx.setTransform(1,0,0,1,0,0);
+
+    drawCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
+    uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height);
+
+    zoomRect = null;
+    updateZoomTransform();
+
+    undoStack.length = 0;
+    updateUndoButton();
+    renderTextLayer();
+  }
+
+  window.addEventListener('resize', ()=>{
+    if (video.videoWidth) resizeCanvases();
+    if (textEditor.style.display !== 'none') positionEditorToSelected();
+  });
+
+  // ===== ツール =====
+  let toolMode = 'pen'; // pen|eraser|shape|text
+
+  const pens = [
+    { color:'#ffffff', size:10 },
+    { color:'#ff0000', size:10 },
+    { color:'#7dd3fc', size:10 }
+  ];
+  let activePenIndex = 1;
+  let eraserSize = 30;
+
+  const penConfigs = [
+    { panel: document.getElementById('pen-config-0'), colorInput: document.getElementById('pen-color-0'), sizeInput: document.getElementById('pen-size-0') },
+    { panel: document.getElementById('pen-config-1'), colorInput: document.getElementById('pen-color-1'), sizeInput: document.getElementById('pen-size-1') },
+    { panel: document.getElementById('pen-config-2'), colorInput: document.getElementById('pen-color-2'), sizeInput: document.getElementById('pen-size-2') }
+  ];
+  const eraserConfigPanel = document.getElementById('eraser-config');
+  const eraserSizeInput = document.getElementById('eraser-size');
+  let openPenConfigIndex = null;
+
+  let shapeColor = '#ffffff';
+  const SHAPE_LINE_WIDTH = 10;
+  function updateShapeIconColor(){
+    toolShapeBtn.style.background = shapeColor;
+    const r = parseInt(shapeColor.slice(1,3),16);
+    const g = parseInt(shapeColor.slice(3,5),16);
+    const b = parseInt(shapeColor.slice(5,7),16);
+    const y = 0.299*r + 0.587*g + 0.114*b;
+    toolShapeBtn.style.color = (y>160) ? '#000' : '#fff';
+  }
+  updateShapeIconColor();
+  shapeColorInput.value = shapeColor;
+  shapeColorInput.addEventListener('input', ()=>{
+    shapeColor = shapeColorInput.value;
+    updateShapeIconColor();
+    log(`面の色変更: ${shapeColor}`);
+  });
+
+  function showPanelUnder(panel, anchorEl){
+    if (!panel || !anchorEl) return;
+    panel.style.display='block';
+    panel.style.visibility='hidden';
+    const rect = anchorEl.getBoundingClientRect();
+    const pRect = panel.getBoundingClientRect();
+    let left = rect.left;
+    if (left + pRect.width > window.innerWidth - 8) left = window.innerWidth - pRect.width - 8;
+    if (left < 8) left = 8;
+    const top = rect.bottom + 4;
+    panel.style.left = `${left}px`;
+    panel.style.top  = `${top}px`;
+    panel.style.visibility='visible';
+  }
+  function hidePanel(panel){ if(panel) panel.style.display='none'; }
+  function hideAllToolPanels(){
+    penConfigs.forEach(c=>hidePanel(c.panel));
+    hidePanel(eraserConfigPanel);
+    hidePanel(shapeConfigPanel);
+    hidePanel(textConfigPanel);
+    openPenConfigIndex = null;
+  }
+
+  function updateSwatchVisual(index){
+    const btn = swatchButtons[index];
+    if(!btn) return;
+    const circle = btn.querySelector('.swatch-circle');
+    const pen = pens[index];
+    circle.style.background = pen.color;
+    const minSize=10,maxSize=26;
+    const minW=1,maxW=40;
+    const t = Math.max(minW, Math.min(maxW, pen.size));
+    const ratio = (t-minW)/(maxW-minW);
+    const size = minSize + (maxSize-minSize)*ratio;
+    circle.style.width = `${size}px`;
+    circle.style.height = `${size}px`;
+  }
+  function updateAllSwatches(){ pens.forEach((_,i)=>updateSwatchVisual(i)); }
+
+  function setActivePen(index){
+    activePenIndex = index;
+    swatchButtons.forEach(btn=>{
+      const i = Number(btn.dataset.penIndex);
+      btn.classList.toggle('active', i===index);
     });
+  }
 
-    // ヘッダの色パレット（クリックでペン選択＋そのペン設定ウィンドウ表示/非表示）
-    swatchButtons.forEach(btn => {
-      const idx = Number(btn.dataset.penIndex);
-      btn.addEventListener('click', () => {
-        const same = (openPenConfigIndex === idx && penConfigs[idx].panel.style.display === 'block');
-        setToolMode('pen');
-        setActivePen(idx);
+  function setToolMode(mode){
+    toolMode = mode;
+    toolEraserBtn.classList.toggle('active', mode==='eraser');
+    toolShapeBtn.classList.toggle('active', mode==='shape');
+    toolTextBtn.classList.toggle('active', mode==='text');
+    if (mode==='eraser') drawCtx.globalCompositeOperation='destination-out';
+    else drawCtx.globalCompositeOperation='source-over';
+  }
 
-        // いったん全部閉じる
-        penConfigs.forEach(conf => hidePanel(conf.panel));
-        hidePanel(eraserConfigPanel);
-        eraserConfigOpen = false;
+  setToolMode('pen');
+  setActivePen(1);
+  updateAllSwatches();
+  eraserSizeInput.value = eraserSize;
 
-        if (!same) {
-          openPenConfigIndex = idx;
-          showPanelUnder(penConfigs[idx].panel, btn);
-        } else {
-          openPenConfigIndex = null;
-        }
-      });
+  pens.forEach((pen, idx)=>{
+    penConfigs[idx].colorInput.value = pen.color;
+    penConfigs[idx].sizeInput.value = pen.size;
+    penConfigs[idx].colorInput.addEventListener('input', ()=>{
+      pen.color = penConfigs[idx].colorInput.value;
+      updateSwatchVisual(idx);
+      log(`ペン${idx+1} 色変更: ${pen.color}`);
     });
-
-    // 消しゴム（トグル＋設定ウィンドウ）
-    toolEraserBtn.addEventListener('click', () => {
-      const willEraser = toolMode !== 'eraser';
-      if (willEraser) {
-        setToolMode('eraser');
-        // ペン設定は閉じる
-        penConfigs.forEach(conf => hidePanel(conf.panel));
-        openPenConfigIndex = null;
-        // 消しゴム設定を表示
-        showPanelUnder(eraserConfigPanel, toolEraserBtn);
-        eraserConfigOpen = true;
-        log('ツール: 消しゴム');
-      } else {
-        setToolMode('pen');
-        hidePanel(eraserConfigPanel);
-        eraserConfigOpen = false;
-        log('ツール: ペン');
-      }
+    penConfigs[idx].sizeInput.addEventListener('input', ()=>{
+      pen.size = Number(penConfigs[idx].sizeInput.value) || 1;
+      updateSwatchVisual(idx);
+      log(`ペン${idx+1} 太さ変更: ${pen.size}px`);
     });
+  });
+  eraserSizeInput.addEventListener('input', ()=>{
+    eraserSize = Number(eraserSizeInput.value) || 1;
+    log(`消しゴム 太さ変更: ${eraserSize}px`);
+  });
 
-    // 図形（四角）モード（トグル）
-    toolShapeBtn.addEventListener('click', () => {
-      const nowShape = toolMode === 'shape';
-      setToolMode(nowShape ? 'pen' : 'shape');
-      log(`ツール: ${toolMode === 'shape' ? '図形（四角）' : 'ペン'}`);
+  swatchButtons.forEach(btn=>{
+    const idx = Number(btn.dataset.penIndex);
+    btn.addEventListener('click', ()=>{
+      const same = (openPenConfigIndex===idx && penConfigs[idx].panel.style.display==='block');
+      setToolMode('pen');
+      setActivePen(idx);
+      hideAllToolPanels();
+      hideTextEditor();
+      if (!same){
+        openPenConfigIndex = idx;
+        showPanelUnder(penConfigs[idx].panel, btn);
+      }else openPenConfigIndex = null;
     });
+  });
 
-    if (!supportsMediaRecorder || !supportsCaptureStream) {
-      log('このブラウザでは録画／タイムラプス機能が完全にはサポートされていない可能性があります（静止画は利用可能）。');
+  toolEraserBtn.addEventListener('click', ()=>{
+    const will = toolMode!=='eraser';
+    hideAllToolPanels(); hideTextEditor();
+    if (will){
+      setToolMode('eraser');
+      showPanelUnder(eraserConfigPanel, toolEraserBtn);
+      log('ツール: 消しゴム');
+    }else{
+      setToolMode('pen');
+      log('ツール: ペン');
     }
-
-    function formatTime(ms) {
-      const totalSec = Math.floor(ms / 1000);
-      const m = Math.floor(totalSec / 60);
-      const s = totalSec % 60;
-      return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  });
+  toolShapeBtn.addEventListener('click', ()=>{
+    const will = toolMode!=='shape';
+    hideAllToolPanels(); hideTextEditor();
+    if (will){
+      setToolMode('shape');
+      showPanelUnder(shapeConfigPanel, toolShapeBtn);
+      log('ツール: 面（四角）');
+    }else{
+      setToolMode('pen');
+      log('ツール: ペン');
     }
-
-    function startRecTimer() {
-      recStartTime = Date.now();
-      recTimerEl.textContent = '00:00';
-      if (recTimerId) clearInterval(recTimerId);
-      recTimerId = setInterval(() => {
-        recTimerEl.textContent = formatTime(Date.now() - recStartTime);
-      }, 500);
-    }
-    function stopRecTimer() {
-      if (recTimerId) {
-        clearInterval(recTimerId);
-        recTimerId = null;
-      }
-    }
-    function startTlTimer() {
-      tlStartTime = Date.now();
-      tlTimerEl.textContent = '00:00';
-      if (tlTimerId) clearInterval(tlTimerId);
-      tlTimerId = setInterval(() => {
-        tlTimerEl.textContent = formatTime(Date.now() - tlStartTime);
-      }, 500);
-    }
-    function stopTlTimer() {
-      if (tlTimerId) {
-        clearInterval(tlTimerId);
-        tlTimerId = null;
-      }
-    }
-
-    logToggle.addEventListener('click', () => {
-      logPanel.classList.toggle('open');
-    });
-
-    videoSettingsToggle.addEventListener('click', () => {
-      videoPanel.style.display = videoPanel.style.display === 'block' ? 'none' : 'block';
-    });
-
-    audioEnabledCheckbox.addEventListener('change', () => {
-      audioEnabled = audioEnabledCheckbox.checked;
-      log(`音声録音: ${audioEnabled ? 'ON' : 'OFF'}`);
-      if (cameraStream) {
-        cameraStream.getAudioTracks().forEach(t => {
-          t.enabled = audioEnabled;
-        });
-      }
-    });
-
-    async function populateCameraList() {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoDevices = devices.filter(d => d.kind === 'videoinput');
-        cameraSelect.innerHTML = '';
-
-        videoDevices.forEach((d, idx) => {
-          const opt = document.createElement('option');
-          opt.value = d.deviceId;
-          opt.textContent = d.label || `カメラ ${idx + 1}`;
-          cameraSelect.appendChild(opt);
-        });
-
-        if (!currentVideoDeviceId && videoDevices[0]) {
-          currentVideoDeviceId = videoDevices[0].deviceId;
-        }
-        if (currentVideoDeviceId) {
-          cameraSelect.value = currentVideoDeviceId;
-        }
-
-        cameraSelect.disabled = videoDevices.length <= 1;
-        if (videoDevices.length > 1) {
-          log(`カメラを ${videoDevices.length} 台検出しました。映像設定から切り替えできます。`);
-        }
-      } catch (e) {
-        console.log('enumerateDevices error', e);
-      }
-    }
-
-    async function initCamera(deviceId = null) {
-      try {
-        if (cameraStream) {
-          cameraStream.getTracks().forEach(t => t.stop());
-        }
-
-        const constraints = {
-          video: deviceId
-            ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-            : { width: { ideal: 1920 }, height: { ideal: 1080 } },
-          audio: true
-        };
-
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        cameraStream = stream;
-        hasInitializedCamera = true;
-
-        cameraStream.getAudioTracks().forEach(t => { t.enabled = audioEnabled; });
-
-        video.srcObject = cameraStream;
-        log(deviceId ? 'カメラを切り替えました' : 'カメラを開始しました');
-
-        video.addEventListener('loadedmetadata', () => {
-          resizeCanvases();
-          btnShot.disabled = false;
-          if (supportsMediaRecorder && supportsCaptureStream) {
-            btnStartRec.disabled = false;
-            btnStartTl.disabled = false;
-          } else {
-            btnStartRec.disabled = true;
-            btnStopRec.disabled = true;
-            btnStartTl.disabled = true;
-            btnStopTl.disabled = true;
-          }
-        }, { once: true });
-
-        btnStartCamera.disabled = true;
-
-        await populateCameraList();
-      } catch (e) {
-        console.error(e);
-        log('カメラが許可されなかったか、選択したカメラが利用できませんでした');
-      }
-    }
-
-    btnStartCamera.addEventListener('click', () => {
-      initCamera(currentVideoDeviceId);
-    });
-
-    cameraSelect.addEventListener('change', () => {
-      const devId = cameraSelect.value;
-      currentVideoDeviceId = devId;
-      if (hasInitializedCamera) {
-        initCamera(devId);
-      }
-    });
-
-    function resizeCanvases() {
-      const rect = cameraWrapper.getBoundingClientRect();
-      const width = rect.width;
-      const height = rect.height;
-      const dpr = window.devicePixelRatio || 1;
-
-      [drawCanvas, uiCanvas, compositeCanvas].forEach(c => {
-        c.width = width * dpr;
-        c.height = height * dpr;
-        c.style.width = width + 'px';
-        c.style.height = height + 'px';
-      });
-
-      drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
-      uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
-
-      zoomRect = null;
-      updateZoomTransform();
-
-      // キャンバスサイズ変更時はUndo履歴クリア
-      undoStack.length = 0;
-      updateUndoButton();
-
-      log(`キャンバス: ${width}x${height} (DPR=${dpr} → 内部 ${drawCanvas.width}x${drawCanvas.height})`);
-    }
-
-    window.addEventListener('resize', () => {
-      if (video.videoWidth) resizeCanvases();
-    });
-
-    window.addEventListener('orientationchange', () => {
-      setTimeout(() => {
-        window.scrollTo(0, 0);
-        if (video.videoWidth) resizeCanvases();
-      }, 200);
-    });
-
-    function getCanvasPos(e) {
-      const rect = drawCanvas.getBoundingClientRect();
-      let clientX, clientY;
-      if (e.touches && e.touches[0]) {
-        clientX = e.touches[0].clientX;
-        clientY = e.touches[0].clientY;
-      } else {
-        clientX = e.clientX;
-        clientY = e.clientY;
-      }
-      const x = (clientX - rect.left) * (drawCanvas.width / rect.width);
-      const y = (clientY - rect.top) * (drawCanvas.height / rect.height);
-      return { x, y };
-    }
-
-    function startDraw(e) {
-      if (zoomMode) return;
-      e.preventDefault();
-
-      // ★ 描画開始前にUndo用スナップショットを保存
-      pushUndo();
-
-      const pos = getCanvasPos(e);
-
-      if (toolMode === 'shape') {
-        isDrawing = true;
-        shapeDragStart = pos;
-        lastShapePos = pos;
-        uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
-        return;
-      }
-
-      isDrawing = true;
-      lastX = pos.x;
-      lastY = pos.y;
-    }
-
-    function draw(e) {
-      if (!isDrawing || zoomMode) return;
-      e.preventDefault();
-      const pos = getCanvasPos(e);
-
-      if (toolMode === 'shape') {
-        if (!shapeDragStart) return;
-        lastShapePos = pos;
-
-        uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
-        uiCtx.save();
-        const pen = pens[activePenIndex];
-        uiCtx.strokeStyle = pen.color;
-        uiCtx.lineWidth = Math.max(1, pen.size);
-        uiCtx.setLineDash([6, 4]);
-        const x = Math.min(shapeDragStart.x, pos.x);
-        const y = Math.min(shapeDragStart.y, pos.y);
-        const w = Math.abs(pos.x - shapeDragStart.x);
-        const h = Math.abs(pos.y - shapeDragStart.y);
-        uiCtx.strokeRect(x, y, w, h);
-        uiCtx.restore();
-        return;
-      }
-
-      if (toolMode === 'eraser') {
-        drawCtx.strokeStyle = 'rgba(0,0,0,1)';
-        drawCtx.lineWidth = eraserSize;
-      } else {
-        const pen = pens[activePenIndex];
-        drawCtx.strokeStyle = pen.color;
-        drawCtx.lineWidth = pen.size;
-      }
-      drawCtx.lineCap = 'round';
-      drawCtx.lineJoin = 'round';
-
-      drawCtx.beginPath();
-      drawCtx.moveTo(lastX, lastY);
-      drawCtx.lineTo(pos.x, pos.y);
-      drawCtx.stroke();
-
-      lastX = pos.x;
-      lastY = pos.y;
-    }
-
-    function endDraw(e) {
-      if (!isDrawing) return;
-      e.preventDefault();
-
-      if (toolMode === 'shape' && shapeDragStart && lastShapePos) {
-        const x = Math.min(shapeDragStart.x, lastShapePos.x);
-        const y = Math.min(shapeDragStart.y, lastShapePos.y);
-        const w = Math.abs(lastShapePos.x - shapeDragStart.x);
-        const h = Math.abs(lastShapePos.y - shapeDragStart.y);
-
-        const minSize = 4;
-        if (w >= minSize && h >= minSize) {
-          const prevOp = drawCtx.globalCompositeOperation;
-          drawCtx.globalCompositeOperation = 'source-over';
-
-          const pen = pens[activePenIndex];
-          drawCtx.save();
-          drawCtx.strokeStyle = pen.color;
-          drawCtx.lineWidth = pen.size;
-          drawCtx.lineJoin = 'round';
-          // 白で塗りつぶした四角
-          drawCtx.fillStyle = '#ffffff';
-          drawCtx.fillRect(x, y, w, h);
-          drawCtx.strokeRect(x, y, w, h);
-          drawCtx.restore();
-
-          drawCtx.globalCompositeOperation = prevOp;
-        }
-
-        uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
-        shapeDragStart = null;
-        lastShapePos = null;
-      }
-
-      isDrawing = false;
-    }
-
-    drawCanvas.addEventListener('mousedown', startDraw);
-    drawCanvas.addEventListener('mousemove', draw);
-    drawCanvas.addEventListener('mouseup', endDraw);
-    drawCanvas.addEventListener('mouseleave', endDraw);
-
-    drawCanvas.addEventListener('touchstart', startDraw, { passive: false });
-    drawCanvas.addEventListener('touchmove', draw, { passive: false });
-    drawCanvas.addEventListener('touchend', endDraw, { passive: false });
-    drawCanvas.addEventListener('touchcancel', endDraw, { passive: false });
-
-    btnClear.addEventListener('click', () => {
-      // ★ 全消しもUndoできるように、実行前に保存
-      pushUndo();
-      drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
-      uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
-      log('手描きレイヤーをクリアしました');
-    });
-
-    function updateVideoFilter() {
-      const exposureFactor = Math.pow(2, settings.exposure);
-      const b = settings.brightness * exposureFactor;
-      const c = settings.contrast;
-      const t = settings.colorTemp;
-
-      let filter = `brightness(${b}) contrast(${c})`;
-      if (t > 0) {
-        const amt = t;
-        filter += ` sepia(${amt}) saturate(${1 + 0.5 * amt}) hue-rotate(-10deg)`;
-      } else if (t < 0) {
-        const amt = -t;
-        filter += ` saturate(${1 - 0.3 * amt}) hue-rotate(${amt * 20}deg)`;
-      }
-      videoFilterString = filter;
-      video.style.filter = filter;
-    }
-
-    function updateVideoFlipPreview() {
-      const sx = flipH ? -1 : 1;
-      const sy = flipV ? -1 : 1;
-      video.style.transform = `scaleX(${sx}) scaleY(${sy})`;
-    }
-
-    brightnessSlider.addEventListener('input', () => {
-      settings.brightness = parseFloat(brightnessSlider.value) || 1;
-      updateVideoFilter();
-    });
-    contrastSlider.addEventListener('input', () => {
-      settings.contrast = parseFloat(contrastSlider.value) || 1;
-      updateVideoFilter();
-    });
-    exposureSlider.addEventListener('input', () => {
-      settings.exposure = parseFloat(exposureSlider.value) || 0;
-      updateVideoFilter();
-    });
-    colorTempSlider.addEventListener('input', () => {
-      settings.colorTemp = parseFloat(colorTempSlider.value) || 0;
-      updateVideoFilter();
-    });
-    sharpnessSlider.addEventListener('input', () => {
-      settings.sharpness = parseFloat(sharpnessSlider.value) || 0;
-    });
-    lineBoostCheckbox.addEventListener('change', () => {
-      settings.lineBoost = lineBoostCheckbox.checked;
-      log(`線・文字くっきり: ${settings.lineBoost ? 'ON' : 'OFF'}`);
-    });
-    noiseReduceCheckbox.addEventListener('change', () => {
-      settings.noiseReduce = noiseReduceCheckbox.checked;
-      log(`ノイズ軽減: ${settings.noiseReduce ? 'ON' : 'OFF'}`);
-    });
-    flipHCheckbox.addEventListener('change', () => {
-      flipH = flipHCheckbox.checked;
-      updateVideoFlipPreview();
-      log(`左右反転: ${flipH ? 'ON' : 'OFF'}`);
-    });
-    flipVCheckbox.addEventListener('change', () => {
-      flipV = flipVCheckbox.checked;
-      updateVideoFlipPreview();
-      log(`上下反転: ${flipV ? 'ON' : 'OFF'}`);
-    });
-
-    updateVideoFilter();
-    updateVideoFlipPreview();
-
-    function applyDenoiseToImage(img, strength) {
-      if (strength <= 0) return;
-      const w = img.width;
-      const h = img.height;
-      const data = img.data;
-      const src = new Uint8ClampedArray(data);
-
-      const k = strength;
-      for (let y = 1; y < h - 1; y++) {
-        for (let x = 1; x < w - 1; x++) {
-          const idx = (y * w + x) * 4;
-          let r = 0, g = 0, b = 0;
-          for (let ky = -1; ky <= 1; ky++) {
-            for (let kx = -1; kx <= 1; kx++) {
-              const idx2 = ((y + ky) * w + (x + kx)) * 4;
-              r += src[idx2];
-              g += src[idx2 + 1];
-              b += src[idx2 + 2];
-            }
-          }
-          const blurR = r / 9;
-          const blurG = g / 9;
-          const blurB = b / 9;
-          const origR = src[idx];
-          const origG = src[idx + 1];
-          const origB = src[idx + 2];
-
-          data[idx]     = Math.max(0, Math.min(255, origR * (1-k) + blurR * k));
-          data[idx + 1] = Math.max(0, Math.min(255, origG * (1-k) + blurG * k));
-          data[idx + 2] = Math.max(0, Math.min(255, origB * (1-k) + blurB * k));
-        }
-      }
-    }
-
-    function applySharpenToImage(img, amount, lineBoost) {
-      if (amount <= 0) return;
-      const w = img.width;
-      const h = img.height;
-      const data = img.data;
-      const src = new Uint8ClampedArray(data);
-
-      const centerBase = lineBoost ? 10 : 5;
-      const gain = lineBoost ? 10 : 4;
-      const center = centerBase + gain * amount;
-
-      const kernel = [
-        0, -1, 0,
-        -1, center, -1,
-        0, -1, 0
-      ];
-
-      for (let y = 1; y < h - 1; y++) {
-        for (let x = 1; x < w - 1; x++) {
-          const idx = (y * w + x) * 4;
-          let r = 0, g = 0, b = 0;
-          let ki = 0;
-          for (let ky = -1; ky <= 1; ky++) {
-            for (let kx = -1; kx <= 1; kx++) {
-              const idx2 = ((y + ky) * w + (x + kx)) * 4;
-              const wgt = kernel[ki++];
-              r += src[idx2] * wgt;
-              g += src[idx2 + 1] * wgt;
-              b += src[idx2 + 2] * wgt;
-            }
-          }
-          data[idx]     = Math.max(0, Math.min(255, r));
-          data[idx + 1] = Math.max(0, Math.min(255, g));
-          data[idx + 2] = Math.max(0, Math.min(255, b));
-        }
-      }
-
-      if (lineBoost) {
-        const contrast = 1.4 + 0.6 * amount;
-        for (let i = 0; i < data.length; i += 4) {
-          let r = data[i], g = data[i+1], b = data[i+2];
-          const yLum = 0.299*r + 0.587*g + 0.114*b;
-          const y2 = 128 + (yLum - 128) * contrast;
-          const ratio = yLum > 0 ? (y2 / yLum) : 1;
-          data[i]   = Math.max(0, Math.min(255, r * ratio));
-          data[i+1] = Math.max(0, Math.min(255, g * ratio));
-          data[i+2] = Math.max(0, Math.min(255, b * ratio));
-        }
-      }
-    }
-
-    function postProcessFrame() {
-      const w = compositeCanvas.width;
-      const h = compositeCanvas.height;
-      if (!w || !h) return;
-
-      const needDenoise = settings.noiseReduce;
-      const sharpFromSlider = settings.sharpness;
-      const extraFromLine = settings.lineBoost ? 0.8 : 0;
-      const sharpAmount = Math.min(1.5, Math.max(0, sharpFromSlider + extraFromLine));
-
-      if (!needDenoise && sharpAmount <= 0) return;
-
-      const img = compositeCtx.getImageData(0, 0, w, h);
-
-      if (needDenoise) {
-        applyDenoiseToImage(img, 0.7);
-      }
-      if (sharpAmount > 0) {
-        applySharpenToImage(img, sharpAmount, settings.lineBoost);
-      }
-
-      compositeCtx.putImageData(img, 0, 0);
-    }
-
-    function drawCompositeFrame() {
-      const w = compositeCanvas.width;
-      const h = compositeCanvas.height;
-      if (!w || !h) return;
-      if (!video.videoWidth || !video.videoHeight) return;
-
-      const Wcss = cameraWrapper.clientWidth;
-      const Hcss = cameraWrapper.clientHeight;
-      if (!Wcss || !Hcss) return;
-
-      const dpr = window.devicePixelRatio || 1;
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
-
-      compositeCtx.save();
-      compositeCtx.setTransform(1, 0, 0, 1, 0, 0);
-      compositeCtx.fillStyle = 'black';
-      compositeCtx.fillRect(0, 0, w, h);
-
-      compositeCtx.scale(dpr, dpr);
-
-      let s = 1;
-      let tx = 0;
-      let ty = 0;
-
-      if (zoomRect) {
-        const r = zoomRect;
-        const sZoom = Math.max(Wcss / r.w, Hcss / r.h);
-        const cx = r.x + r.w / 2;
-        const cy = r.y + r.h / 2;
-        const CwX = Wcss / 2;
-        const CwY = Hcss / 2;
-        const ttx = CwX - sZoom * cx;
-        const tty = CwY - sZoom * cy;
-        s = sZoom;
-        tx = ttx;
-        ty = tty;
-      }
-
-      compositeCtx.translate(tx, ty);
-      compositeCtx.scale(s, s);
-
-      const s0 = Math.max(Wcss / vw, Hcss / vh);
-      const vsW = vw * s0;
-      const vsH = vh * s0;
-      const dx = (Wcss - vsW) / 2;
-      const dy = (Hcss - vsH) / 2;
-
-      compositeCtx.save();
-      compositeCtx.filter = videoFilterString || 'none';
-
-      let drawTx = dx;
-      let drawTy = dy;
-      let scaleX = 1;
-      let scaleY = 1;
-      if (flipH) {
-        drawTx = dx + vsW;
-        scaleX = -1;
-      }
-      if (flipV) {
-        drawTy = dy + vsH;
-        scaleY = -1;
-      }
-
-      compositeCtx.translate(drawTx, drawTy);
-      compositeCtx.scale(scaleX, scaleY);
-      compositeCtx.scale(s0, s0);
-
-      compositeCtx.drawImage(video, 0, 0, vw, vh);
-
-      compositeCtx.restore();
-
-      compositeCtx.drawImage(
-        drawCanvas,
-        0, 0, drawCanvas.width, drawCanvas.height,
-        0, 0, Wcss, Hcss
-      );
-
-      compositeCtx.restore();
-
-      postProcessFrame();
-    }
-
-    btnShot.addEventListener('click', () => {
-      drawCompositeFrame();
-      const url = compositeCanvas.toDataURL('image/png');
-      const a = document.createElement('a');
-      const ts = new Date().toISOString().replace(/[:.]/g, '-');
-      a.href = url;
-      a.download = `snapshot_${ts}.png`;
-      a.click();
-      log('静止画をPNGとして保存しました（映像設定・反転・ズーム・ノイズ軽減・線くっきり反映）');
-    });
-
-    btnStartRec.addEventListener('click', () => {
-      if (!cameraStream) {
-        log('先にカメラを開始してください');
-        return;
-      }
-      if (!supportsMediaRecorder || !supportsCaptureStream) {
-        log('このブラウザでは録画機能が利用できません（iPhone Safari の一部バージョンなど）。静止画は利用可能です。');
-        return;
-      }
-
-      const fps = Number(videoFpsInput.value) || 30;
-      const stream = compositeCanvas.captureStream(fps);
-
-      if (audioEnabled && cameraStream) {
-        cameraStream.getAudioTracks().forEach(t => {
-          t.enabled = true;
-          stream.addTrack(t);
-        });
-      } else if (cameraStream) {
-        cameraStream.getAudioTracks().forEach(t => t.enabled = false);
-      }
-
-      recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-      recordedChunks = [];
-      recordingMode = 'normal';
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) recordedChunks.push(e.data);
-      };
-      recorder.onstop = () => {
-        const blob = new Blob(recordedChunks, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const ts = new Date().toISOString().replace(/[:.]/g, '-');
-        a.href = url;
-        a.download = `record_normal_${ts}.webm`;
-        a.click();
-        log(`通常動画(WebM, 音声${audioEnabled ? 'あり' : 'なし'})を保存しました`);
-      };
-
-      const render = () => {
-        drawCompositeFrame();
-        animationId = requestAnimationFrame(render);
-      };
-      render();
-
-      recorder.start();
-      btnStartRec.disabled = true;
-      btnStopRec.disabled = false;
-      btnStartTl.disabled = true;
-      startRecTimer();
-      log(`通常録画開始 (FPS: ${fps}, ズーム: ${zoomRect ? 'ON' : 'OFF'}, 音声${audioEnabled ? 'ON' : 'OFF'})`);
-    });
-
-    btnStopRec.addEventListener('click', () => {
-      if (!recorder || recordingMode !== 'normal') return;
-      recorder.stop();
-      cancelAnimationFrame(animationId);
-      animationId = null;
-      btnStartRec.disabled = false;
-      btnStopRec.disabled = true;
-      btnStartTl.disabled = false;
-      stopRecTimer();
-      log('通常録画停止');
-    });
-
-    btnStartTl.addEventListener('click', () => {
-      if (!cameraStream) {
-        log('先にカメラを開始してください');
-        return;
-      }
-      if (!supportsMediaRecorder || !supportsCaptureStream) {
-        log('このブラウザではタイムラプス録画は利用できません（iPhone Safari の一部バージョンなど）。静止画は利用可能です。');
-        return;
-      }
-
-      const fps = Number(tlFpsInput.value) || 10;
-      tlIntervalMs = Number(tlIntervalInput.value) || 500;
-
-      const stream = compositeCanvas.captureStream(fps);
-
-      if (audioEnabled && cameraStream) {
-        cameraStream.getAudioTracks().forEach(t => {
-          t.enabled = true;
-          stream.addTrack(t);
-        });
-      } else if (cameraStream) {
-        cameraStream.getAudioTracks().forEach(t => t.enabled = false);
-      }
-
-      recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-      recordedChunks = [];
-      recordingMode = 'timelapse';
-      lastTlTime = performance.now();
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) recordedChunks.push(e.data);
-      };
-      recorder.onstop = () => {
-        const blob = new Blob(recordedChunks, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const ts = new Date().toISOString().replace(/[:.]/g, '-');
-        a.href = url;
-        a.download = `record_timelapse_${ts}.webm`;
-        a.click();
-        log(`タイムラプス(WebM, 音声${audioEnabled ? 'あり' : 'なし'})を保存しました`);
-      };
-
-      const renderTl = (time) => {
-        if (time - lastTlTime >= tlIntervalMs) {
-          drawCompositeFrame();
-          lastTlTime = time;
-        }
-        animationId = requestAnimationFrame(renderTl);
-      };
-      animationId = requestAnimationFrame(renderTl);
-
-      recorder.start();
-      btnStartTl.disabled = true;
-      btnStopTl.disabled = false;
-      btnStartRec.disabled = true;
-      startTlTimer();
-      log(`タイムラプス録画開始 (録画FPS: ${fps}, 間隔: ${tlIntervalMs}ms, ズーム: ${zoomRect ? 'ON' : 'OFF'}, 音声${audioEnabled ? 'ON' : 'OFF'})`);
-    });
-
-    btnStopTl.addEventListener('click', () => {
-      if (!recorder || recordingMode !== 'timelapse') return;
-      recorder.stop();
-      cancelAnimationFrame(animationId);
-      animationId = null;
-      btnStartTl.disabled = false;
-      btnStopTl.disabled = true;
-      btnStartRec.disabled = false;
-      stopTlTimer();
-      log('タイムラプス録画停止');
-    });
-
-    function updateZoomTransform() {
-      if (!zoomRect) {
-        cameraInner.style.transform = 'translate(0px, 0px) scale(1)';
-        return;
-      }
-      const W = cameraWrapper.clientWidth;
-      const H = cameraWrapper.clientHeight;
-      if (!W || !H) return;
-
-      const r = zoomRect;
-      const s = Math.max(W / r.w, H / r.h);
-
-      const cx = r.x + r.w / 2;
-      const cy = r.y + r.h / 2;
-      const CwX = W / 2;
-      const CwY = H / 2;
-
-      const tx = CwX - s * cx;
-      const ty = CwY - s * cy;
-
-      cameraInner.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
-    }
-
-    function getWrapperPosFromClient(clientX, clientY) {
-      const rect = cameraWrapper.getBoundingClientRect();
-      return {
-        x: clientX - rect.left,
-        y: clientY - rect.top
-      };
-    }
-
-    function clearUiCanvas() {
-      uiCtx.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
-    }
-
-    function enterZoomMode() {
-      zoomMode = true;
-      zoomDragStart = null;
-      lastZoomPos = null;
-      clearUiCanvas();
-      zoomHint.classList.add('visible');
+  });
+  toolTextBtn.addEventListener('click', ()=>{
+    const will = toolMode!=='text';
+    hideAllToolPanels(); hideTextEditor();
+    if (will){
+      setToolMode('text');
+      showPanelUnder(textConfigPanel, toolTextBtn);
+      syncTextPanelWithSelected();
+      log('ツール: テキスト（クリックでボックス追加）');
+      textLayer.style.pointerEvents = 'auto';
       drawCanvas.style.pointerEvents = 'none';
-      log('ズーム領域選択モード：映像上をドラッグしてください');
-    }
-
-    function exitZoomMode() {
-      zoomMode = false;
-      zoomDragStart = null;
-      lastZoomPos = null;
-      clearUiCanvas();
-      zoomHint.classList.remove('visible');
+      updateSelectionVisual();
+    }else{
+      setToolMode('pen');
+      log('ツール: ペン');
+      textLayer.style.pointerEvents = 'none';
       drawCanvas.style.pointerEvents = 'auto';
+      deselectText();
     }
+  });
 
-    btnZoomSelect.addEventListener('click', () => {
-      if (!video.videoWidth) {
-        log('カメラ起動後にズームできます');
-        return;
-      }
-      enterZoomMode();
+  // ===== ログ/映像パネル =====
+  logToggle.addEventListener('click', ()=> logPanel.classList.toggle('open'));
+  videoSettingsToggle.addEventListener('click', ()=>{
+    videoPanel.style.display = (videoPanel.style.display==='block') ? 'none':'block';
+  });
+
+  // ===== フィルタ/反転（プレビュー）=====
+  const settings = { brightness:1, contrast:1, exposure:0, colorTemp:0, sharpness:0, lineBoost:false, noiseReduce:false };
+  let videoFilterString = 'brightness(1) contrast(1)';
+  let flipH = true;
+  let flipV = false;
+
+  function updateVideoFilter(){
+    const exposureFactor = Math.pow(2, settings.exposure);
+    const b = settings.brightness * exposureFactor;
+    const c = settings.contrast;
+    const t = settings.colorTemp;
+
+    let filter = `brightness(${b}) contrast(${c})`;
+    if (t > 0){
+      const amt = t;
+      filter += ` sepia(${amt}) saturate(${1 + 0.5*amt}) hue-rotate(-10deg)`;
+    }else if (t < 0){
+      const amt = -t;
+      filter += ` saturate(${1 - 0.3*amt}) hue-rotate(${amt * 20}deg)`;
+    }
+    videoFilterString = filter;
+    video.style.filter = filter;
+  }
+  function updateVideoFlipPreview(){
+    const sx = flipH ? -1 : 1;
+    const sy = flipV ? -1 : 1;
+    video.style.transform = `scaleX(${sx}) scaleY(${sy})`;
+  }
+
+  brightnessSlider.addEventListener('input', ()=>{ settings.brightness=parseFloat(brightnessSlider.value)||1; updateVideoFilter(); });
+  contrastSlider.addEventListener('input', ()=>{ settings.contrast=parseFloat(contrastSlider.value)||1; updateVideoFilter(); });
+  exposureSlider.addEventListener('input', ()=>{ settings.exposure=parseFloat(exposureSlider.value)||0; updateVideoFilter(); });
+  colorTempSlider.addEventListener('input', ()=>{ settings.colorTemp=parseFloat(colorTempSlider.value)||0; updateVideoFilter(); });
+  sharpnessSlider.addEventListener('input', ()=>{ settings.sharpness=parseFloat(sharpnessSlider.value)||0; });
+  lineBoostCheckbox.addEventListener('change', ()=>{ settings.lineBoost=lineBoostCheckbox.checked; log(`線・文字くっきり: ${settings.lineBoost?'ON':'OFF'}`); });
+  noiseReduceCheckbox.addEventListener('change', ()=>{ settings.noiseReduce=noiseReduceCheckbox.checked; log(`ノイズ軽減: ${settings.noiseReduce?'ON':'OFF'}`); });
+  flipHCheckbox.addEventListener('change', ()=>{ flipH=flipHCheckbox.checked; updateVideoFlipPreview(); log(`左右反転: ${flipH?'ON':'OFF'}`); });
+  flipVCheckbox.addEventListener('change', ()=>{ flipV=flipVCheckbox.checked; updateVideoFlipPreview(); log(`上下反転: ${flipV?'ON':'OFF'}`); });
+  updateVideoFilter();
+  updateVideoFlipPreview();
+
+  // ===== テキスト =====
+  let textDefaults = { color:'#ffffff', size:36, font:'system-ui, -apple-system, BlinkMacSystemFont' };
+  let textItems = [];
+  let selectedTextId = null;
+
+  // ★ドラッグ/リサイズ状態（グローバル）
+  let isDraggingText = false;
+  let isResizingText = false;
+  let dragOffset = {x:0,y:0};
+  let resizeStart = null;
+  let activePointerId = null;
+
+  function newId(){ return Math.random().toString(36).slice(2,9) + Date.now().toString(36).slice(-4); }
+  function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function getSelectedText(){ return textItems.find(t=>t.id===selectedTextId) || null; }
+
+  function applyTextStyleToElement(el,item){
+    const content = el.querySelector('.text-content');
+    content.style.color = item.color;
+    content.style.fontSize = item.size + 'px';
+    content.style.fontFamily = item.font;
+    content.innerHTML = escapeHtml(item.text || '');
+  }
+
+  // ★ 重要：選択だけではDOMを作り直さない（左上ワープ防止）
+  function updateSelectionVisual(){
+    const boxes = textLayer.querySelectorAll('.text-box');
+    boxes.forEach(b=>{
+      b.classList.toggle('selected', b.dataset.id === selectedTextId);
     });
+  }
 
-    btnZoomReset.addEventListener('click', () => {
-      zoomRect = null;
-      updateZoomTransform();
-      exitZoomMode();
-      log('ズームを解除しました');
+  function selectTextSoft(id){
+    selectedTextId = id;
+    updateSelectionVisual();
+    syncTextPanelWithSelected();
+    showPanelUnder(textConfigPanel, toolTextBtn);
+  }
+
+  function renderTextLayer(){
+    textLayer.innerHTML = '';
+    for (const item of textItems){
+      const box = document.createElement('div');
+      box.className = 'text-box';
+      box.dataset.id = item.id;
+      box.style.left = item.x + 'px';
+      box.style.top  = item.y + 'px';
+      box.style.width  = item.w + 'px';
+      box.style.height = item.h + 'px';
+
+      const content = document.createElement('div');
+      content.className = 'text-content';
+      box.appendChild(content);
+
+      const handle = document.createElement('div');
+      handle.className = 'resize-handle';
+      handle.title = '拡大縮小';
+      box.appendChild(handle);
+
+      applyTextStyleToElement(box,item);
+
+      // ===== ここも重要：座標計算は「内側座標」で行う（ズーム対応 & ワープ防止）=====
+      box.addEventListener('pointerdown', (e)=>{
+        e.stopPropagation();
+        if (zoomMode) return;
+
+        // 編集中textareaが開いている場合：操作開始前に確定しない（blur抑制）
+        suppressBlurCommit = true;
+
+        // ★ DOM作り直しはしない。クラス付け替えだけ
+        selectTextSoft(item.id);
+
+        // undoは操作開始1回だけ
+        pushUndo();
+
+        activePointerId = e.pointerId;
+
+        // 内側座標（cameraInner座標）で計算
+        const p = clientToInnerCss(e.clientX, e.clientY);
+
+        if (e.target.classList.contains('resize-handle')){
+          isResizingText = true;
+          isDraggingText = false;
+          resizeStart = {
+            id: item.id,
+            startX: p.x,
+            startY: p.y,
+            startW: item.w,
+            startH: item.h
+          };
+        }else{
+          isDraggingText = true;
+          isResizingText = false;
+          dragOffset.x = p.x - item.x;
+          dragOffset.y = p.y - item.y;
+        }
+
+        try{
+          if (box.setPointerCapture) box.setPointerCapture(e.pointerId);
+        }catch(err){
+          console.warn('setPointerCapture failed:', err);
+        }
+      });
+
+      box.addEventListener('dblclick', (e)=>{
+        e.stopPropagation();
+        if (zoomMode) return;
+        selectTextSoft(item.id);
+        beginEditSelectedText(true);
+      });
+
+      box.addEventListener('pointermove', (e)=>{
+        if (zoomMode) return;
+        if (e.pointerId !== activePointerId) return;
+        if (!isDraggingText && !isResizingText) return;
+
+        const it = textItems.find(t=>t.id===box.dataset.id);
+        if (!it) return;
+
+        const p = clientToInnerCss(e.clientX, e.clientY);
+
+        if (isDraggingText){
+          let nx = p.x - dragOffset.x;
+          let ny = p.y - dragOffset.y;
+
+          // 少しはみ出し許容
+          nx = Math.max(-500, Math.min(nx, cameraWrapper.clientWidth + 500));
+          ny = Math.max(-500, Math.min(ny, cameraWrapper.clientHeight + 500));
+
+          it.x = nx; it.y = ny;
+          box.style.left = it.x+'px';
+          box.style.top  = it.y+'px';
+
+          if (textEditor.style.display !== 'none') positionEditorToSelected();
+        }
+
+        if (isResizingText && resizeStart && resizeStart.id===it.id){
+          const dx = p.x - resizeStart.startX;
+          const dy = p.y - resizeStart.startY;
+          it.w = Math.max(24, resizeStart.startW + dx);
+          it.h = Math.max(18, resizeStart.startH + dy);
+          box.style.width  = it.w+'px';
+          box.style.height = it.h+'px';
+
+          if (textEditor.style.display !== 'none') positionEditorToSelected();
+        }
+      });
+
+      function endTextOp(){
+        if (isDraggingText || isResizingText){
+          isDraggingText = false;
+          isResizingText = false;
+          resizeStart = null;
+          activePointerId = null;
+          suppressBlurCommit = false;
+        }
+      }
+
+      box.addEventListener('pointerup', (e)=>{
+        if (e.pointerId !== activePointerId) return;
+        endTextOp();
+      });
+      box.addEventListener('pointercancel', (e)=>{
+        if (e.pointerId !== activePointerId) return;
+        endTextOp();
+      });
+
+      textLayer.appendChild(box);
+    }
+    updateSelectionVisual();
+    syncTextPanelWithSelected();
+  }
+
+  function deselectText(){
+    selectedTextId = null;
+    hideTextEditor();
+    updateSelectionVisual();
+    syncTextPanelWithSelected();
+  }
+
+  function syncTextPanelWithSelected(){
+    const it = getSelectedText();
+    const enabled = !!it;
+    textConfigPanel.querySelectorAll('input,select,button').forEach(el=> el.disabled = !enabled);
+    if (!it) return;
+    textColorInput.value = it.color;
+    textSizeInput.value = it.size;
+    const opt = Array.from(textFontSelect.options).find(o=>o.value===it.font);
+    if (opt) textFontSelect.value = it.font;
+  }
+
+  function addTextBoxAt(cssX, cssY){
+    const id = newId();
+    const item = {
+      id,
+      x: cssX,
+      y: cssY,
+      w: 220,
+      h: 80,
+      text: '',
+      color: textDefaults.color,
+      size: textDefaults.size,
+      font: textDefaults.font
+    };
+    pushUndo();
+    textItems.push(item);
+    selectedTextId = id;
+    renderTextLayer();                 // 追加時は再構築OK
+    showPanelUnder(textConfigPanel, toolTextBtn);
+    beginEditSelectedText(true);
+    log('テキストボックスを追加しました（編集して確定してください）');
+  }
+
+  function positionEditorToSelected(){
+    const it = getSelectedText();
+    if (!it) return;
+
+    const box = textLayer.querySelector(`.text-box[data-id="${it.id}"]`);
+    if (!box) return;
+
+    const boxRect = box.getBoundingClientRect();
+    const wrapRect = cameraWrapper.getBoundingClientRect();
+    const left = boxRect.left - wrapRect.left;
+    const top  = boxRect.top  - wrapRect.top;
+
+    textEditor.style.left = left+'px';
+    textEditor.style.top  = top +'px';
+    textEditor.style.width  = boxRect.width+'px';
+    textEditor.style.height = boxRect.height+'px';
+  }
+
+  function beginEditSelectedText(focusAll=false){
+    const it = getSelectedText();
+    if(!it) return;
+    if (isDraggingText || isResizingText) return;
+
+    positionEditorToSelected();
+
+    textEditorTa.value = it.text || '';
+    textEditorTa.style.color = it.color;
+    textEditorTa.style.fontSize = it.size+'px';
+    textEditorTa.style.fontFamily = it.font;
+    textEditor.style.display = 'block';
+
+    requestAnimationFrame(()=>{
+      textEditorTa.focus();
+      if (focusAll) textEditorTa.setSelectionRange(0, textEditorTa.value.length);
     });
+  }
 
-    function drawZoomRectPreview(currentPos) {
-      const start = zoomDragStart;
-      clearUiCanvas();
-      uiCtx.strokeStyle = '#00ff88';
-      uiCtx.lineWidth = 2;
-      uiCtx.setLineDash([6, 4]);
+  function commitEditSelectedText(){
+    const it = getSelectedText();
+    if(!it) return;
+    it.text = textEditorTa.value;
 
-      const rect = cameraWrapper.getBoundingClientRect();
-      const scaleX = uiCanvas.width / rect.width;
-      const scaleY = uiCanvas.height / rect.height;
+    hideTextEditor();
 
-      const x = Math.min(start.x, currentPos.x) * scaleX;
-      const y = Math.min(start.y, currentPos.y) * scaleY;
-      const w = Math.abs(currentPos.x - start.x) * scaleX;
-      const h = Math.abs(currentPos.y - start.y) * scaleY;
+    // 内容変更は再構築してOK（操作中ではない）
+    renderTextLayer();
+    log('テキストを更新しました');
+  }
 
-      uiCtx.strokeRect(x, y, w, h);
-      uiCtx.setLineDash([]);
+  function hideTextEditor(){
+    textEditor.style.display = 'none';
+  }
+
+  let suppressBlurCommit = false;
+  textEditorTa.addEventListener('blur', ()=>{
+    if (textEditor.style.display==='none') return;
+    if (suppressBlurCommit) return;
+    if (isDraggingText || isResizingText) return;
+    commitEditSelectedText();
+  });
+
+  textEditorTa.addEventListener('keydown', (e)=>{
+    if (e.key==='Enter' && !e.shiftKey){
+      e.preventDefault();
+      commitEditSelectedText();
+    }
+    if (e.key==='Escape'){
+      e.preventDefault();
+      hideTextEditor();
+      renderTextLayer();
+    }
+  });
+
+  // 設定反映
+  textColorInput.addEventListener('input', ()=>{
+    const it = getSelectedText();
+    const v = textColorInput.value;
+    textDefaults.color = v;
+    if(it){
+      it.color = v;
+      textEditorTa.style.color = v;
+      renderTextLayer();
+    }
+  });
+  textSizeInput.addEventListener('input', ()=>{
+    const it = getSelectedText();
+    const v = Number(textSizeInput.value) || 36;
+    textDefaults.size = v;
+    if(it){
+      it.size = v;
+      textEditorTa.style.fontSize = v+'px';
+      renderTextLayer();
+      if(textEditor.style.display!=='none') positionEditorToSelected();
+    }
+  });
+  textFontSelect.addEventListener('change', ()=>{
+    const it = getSelectedText();
+    const v = textFontSelect.value;
+    textDefaults.font = v;
+    if(it){
+      it.font = v;
+      textEditorTa.style.fontFamily = v;
+      renderTextLayer();
+    }
+  });
+  textEditBtn.addEventListener('click', ()=> beginEditSelectedText(true));
+  textDeleteBtn.addEventListener('click', ()=>{
+    const it = getSelectedText();
+    if(!it) return;
+    pushUndo();
+    textItems = textItems.filter(t=>t.id!==it.id);
+    selectedTextId = null;
+    hideTextEditor();
+    renderTextLayer();
+    log('テキストを削除しました');
+  });
+
+  // ===== クリック位置→cameraInner座標（ズーム逆変換）=====
+  function clientToInnerCss(clientX, clientY){
+    const wrapRect = cameraWrapper.getBoundingClientRect();
+    let x = clientX - wrapRect.left;
+    let y = clientY - wrapRect.top;
+
+    // cameraInner transform: translate(tx,ty) scale(s)
+    // 逆変換: (x - tx)/s
+    x = (x - zoomTransform.tx) / zoomTransform.s;
+    y = (y - zoomTransform.ty) / zoomTransform.s;
+    return {x,y};
+  }
+
+  // wrapper外クリックで選択解除（text以外なら）
+  cameraWrapper.addEventListener('pointerdown', (e)=>{
+    if(zoomMode) return;
+    const path = e.composedPath ? e.composedPath() : [];
+    const hitText = path.some(p=> p && p.classList && p.classList.contains('text-box'));
+    const hitEditor = path.some(p=> p && p.id==='text-editor-ta');
+    if(!hitText && !hitEditor){
+      if(toolMode!=='text') deselectText();
+    }
+  }, {capture:true});
+
+  // ===== 描画/面 =====
+  let isDrawing = false;
+  let lastX=0,lastY=0;
+  let shapeDragStart = null;
+  let lastShapePos = null;
+
+  function getCanvasPosInternal(e){
+    const rect = drawCanvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (drawCanvas.width / rect.width);
+    const y = (e.clientY - rect.top)  * (drawCanvas.height/ rect.height);
+    return {x,y};
+  }
+  function getWrapperPosCss(e){
+    const rect = cameraWrapper.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  // ===== テキスト追加：背景クリックで追加（既存box/ editorは除外）=====
+  textLayer.addEventListener('pointerdown', (e) => {
+    if (zoomMode) return;
+    if (toolMode !== 'text') return;
+
+    const hitText = e.target.closest && e.target.closest('.text-box');
+    const hitEditor = (e.target.id === 'text-editor-ta') || (e.target.closest && e.target.closest('#text-editor'));
+    if (hitText || hitEditor) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    // 追加位置は「cameraInner座標」で保存（ズームでも正しい）
+    const p = clientToInnerCss(e.clientX, e.clientY);
+    addTextBoxAt(p.x, p.y);
+  }, { passive: false });
+
+  function startDraw(e){
+    if(zoomMode) return;
+    e.preventDefault();
+    pushUndo();
+
+    const pos = getCanvasPosInternal(e);
+    if(toolMode==='shape'){
+      isDrawing = true;
+      shapeDragStart = pos;
+      lastShapePos = pos;
+      uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height);
+      return;
     }
 
-    function finalizeZoom(endPosMaybe) {
-      const endPos = endPosMaybe || lastZoomPos || zoomDragStart;
-      if (!zoomDragStart || !endPos) {
-        clearUiCanvas();
-        log('ズーム範囲が決定できませんでした。もう一度ドラッグしてください。');
-        return;
-      }
+    isDrawing = true;
+    lastX = pos.x; lastY = pos.y;
+  }
 
-      const x0 = zoomDragStart.x;
-      const y0 = zoomDragStart.y;
-      const x1 = endPos.x;
-      const y1 = endPos.y;
-      const rx = Math.min(x0, x1);
-      const ry = Math.min(y0, y1);
-      const rw = Math.abs(x1 - x0);
-      const rh = Math.abs(y1 - y0);
+  function draw(e){
+    if(!isDrawing || zoomMode) return;
+    e.preventDefault();
+    const pos = getCanvasPosInternal(e);
 
-      const minSize = 20;
-      if (rw < minSize || rh < minSize) {
-        clearUiCanvas();
-        log('選択範囲が小さすぎます。もう一度広めにドラッグしてください。');
-        return;
-      }
-
-      const W = cameraWrapper.clientWidth;
-      const H = cameraWrapper.clientHeight;
-      const rxClamped = Math.max(0, Math.min(rx, W));
-      const ryClamped = Math.max(0, Math.min(ry, H));
-      const rwClamped = Math.min(rw, W - rxClamped);
-      const rhClamped = Math.min(rh, H - ryClamped);
-
-      zoomRect = { x: rxClamped, y: ryClamped, w: rwClamped, h: rhClamped };
-      updateZoomTransform();
-      exitZoomMode();
-      log('ズームを適用しました（録画・TLもこの範囲を保存）');
+    if(toolMode==='shape'){
+      if(!shapeDragStart) return;
+      lastShapePos = pos;
+      uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height);
+      uiCtx.save();
+      uiCtx.strokeStyle = shapeColor;
+      uiCtx.lineWidth = SHAPE_LINE_WIDTH;
+      uiCtx.setLineDash([6,4]);
+      const x = Math.min(shapeDragStart.x, pos.x);
+      const y = Math.min(shapeDragStart.y, pos.y);
+      const w = Math.abs(pos.x - shapeDragStart.x);
+      const h = Math.abs(pos.y - shapeDragStart.y);
+      uiCtx.strokeRect(x,y,w,h);
+      uiCtx.restore();
+      return;
     }
 
-    cameraWrapper.addEventListener('mousedown', (e) => {
-      if (!zoomMode) return;
-      e.preventDefault();
-      const pos = getWrapperPosFromClient(e.clientX, e.clientY);
-      zoomDragStart = pos;
-      lastZoomPos = pos;
-    }, { capture: true });
-    cameraWrapper.addEventListener('mousemove', (e) => {
-      if (!zoomMode || !zoomDragStart) return;
-      e.preventDefault();
-      const pos = getWrapperPosFromClient(e.clientX, e.clientY);
-      lastZoomPos = pos;
-      drawZoomRectPreview(pos);
-    }, { capture: true });
-    cameraWrapper.addEventListener('mouseup', (e) => {
-      if (!zoomMode || !zoomDragStart) return;
-      e.preventDefault();
-      const pos = getWrapperPosFromClient(e.clientX, e.clientY);
-      lastZoomPos = pos;
-      finalizeZoom(pos);
-    }, { capture: true });
+    if(toolMode==='eraser'){
+      drawCtx.strokeStyle = 'rgba(0,0,0,1)';
+      drawCtx.lineWidth = eraserSize;
+    }else{
+      const pen = pens[activePenIndex];
+      drawCtx.strokeStyle = pen.color;
+      drawCtx.lineWidth = pen.size;
+    }
+    drawCtx.lineCap='round';
+    drawCtx.lineJoin='round';
+    drawCtx.beginPath();
+    drawCtx.moveTo(lastX,lastY);
+    drawCtx.lineTo(pos.x,pos.y);
+    drawCtx.stroke();
+    lastX = pos.x; lastY = pos.y;
+  }
 
-    cameraWrapper.addEventListener('touchstart', (e) => {
-      if (!zoomMode) return;
-      e.preventDefault();
-      const t = e.touches[0];
-      const pos = getWrapperPosFromClient(t.clientX, t.clientY);
-      zoomDragStart = pos;
-      lastZoomPos = pos;
-    }, { passive: false, capture: true });
-    cameraWrapper.addEventListener('touchmove', (e) => {
-      if (!zoomMode || !zoomDragStart) return;
-      e.preventDefault();
-      const t = e.touches[0];
-      const pos = getWrapperPosFromClient(t.clientX, t.clientY);
-      lastZoomPos = pos;
-      drawZoomRectPreview(pos);
-    }, { passive: false, capture: true });
-    cameraWrapper.addEventListener('touchend', (e) => {
-      if (!zoomMode || !zoomDragStart) return;
-      e.preventDefault();
-      finalizeZoom(null);
-    }, { passive: false, capture: true });
+  function endDraw(e){
+    if(!isDrawing) return;
+    e.preventDefault();
 
-  </script>
+    if(toolMode==='shape' && shapeDragStart && lastShapePos){
+      const x = Math.min(shapeDragStart.x, lastShapePos.x);
+      const y = Math.min(shapeDragStart.y, lastShapePos.y);
+      const w = Math.abs(lastShapePos.x - shapeDragStart.x);
+      const h = Math.abs(lastShapePos.y - shapeDragStart.y);
+      const minSize=4;
+      if(w>=minSize && h>=minSize){
+        const prevOp = drawCtx.globalCompositeOperation;
+        drawCtx.globalCompositeOperation='source-over';
+        drawCtx.save();
+        drawCtx.fillStyle = shapeColor;
+        drawCtx.strokeStyle = shapeColor;
+        drawCtx.lineWidth = SHAPE_LINE_WIDTH;
+        drawCtx.fillRect(x,y,w,h);
+        drawCtx.strokeRect(x,y,w,h);
+        drawCtx.restore();
+        drawCtx.globalCompositeOperation = prevOp;
+      }
+      uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height);
+      shapeDragStart=null; lastShapePos=null;
+    }
+
+    isDrawing=false;
+  }
+
+  drawCanvas.addEventListener('pointerdown', startDraw, {passive:false});
+  drawCanvas.addEventListener('pointermove', draw, {passive:false});
+  drawCanvas.addEventListener('pointerup', endDraw, {passive:false});
+  drawCanvas.addEventListener('pointercancel', endDraw, {passive:false});
+  drawCanvas.addEventListener('pointerleave', endDraw, {passive:false});
+
+  btnClear.addEventListener('click', ()=>{
+    pushUndo();
+    drawCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
+    uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height);
+    log('手描きレイヤーをクリアしました（テキストは残ります）');
+  });
+
+  function clearUiCanvas(){ uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height); }
+
+  function updateZoomTransform(){
+    if(!zoomRect){
+      zoomTransform = { s:1, tx:0, ty:0 };
+      cameraInner.style.transform = 'translate(0px,0px) scale(1)';
+      if(textEditor.style.display!=='none') positionEditorToSelected();
+      return;
+    }
+    const W = cameraWrapper.clientWidth;
+    const H = cameraWrapper.clientHeight;
+    if(!W||!H) return;
+
+    const r = zoomRect;
+    const s = Math.max(W/r.w, H/r.h);
+    const cx = r.x + r.w/2;
+    const cy = r.y + r.h/2;
+    const tx = (W/2) - s*cx;
+    const ty = (H/2) - s*cy;
+
+    zoomTransform = { s, tx, ty };
+    cameraInner.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
+    if(textEditor.style.display!=='none') positionEditorToSelected();
+  }
+
+  function enterZoomMode(){
+    zoomMode = true;
+    zoomDragStart=null; lastZoomPos=null;
+    clearUiCanvas();
+    zoomHint.classList.add('visible');
+    drawCanvas.style.pointerEvents='none';
+    textLayer.style.pointerEvents='none';
+    hideTextEditor();
+    log('ズーム領域選択モード：映像上をドラッグしてください');
+  }
+  function exitZoomMode(){
+    zoomMode = false;
+    zoomDragStart=null; lastZoomPos=null;
+    clearUiCanvas();
+    zoomHint.classList.remove('visible');
+    drawCanvas.style.pointerEvents = (toolMode==='text') ? 'none':'auto';
+    textLayer.style.pointerEvents = (toolMode==='text') ? 'auto':'none';
+  }
+
+  btnZoomSelect.addEventListener('click', ()=>{
+    if(!video.videoWidth){ log('カメラ起動後にズームできます'); return; }
+    enterZoomMode();
+  });
+  btnZoomReset.addEventListener('click', ()=>{
+    zoomRect=null;
+    updateZoomTransform();
+    exitZoomMode();
+    log('ズームを解除しました');
+  });
+
+  function getWrapperPosFromClient(clientX,clientY){
+    const rect = cameraWrapper.getBoundingClientRect();
+    return { x: clientX-rect.left, y: clientY-rect.top };
+  }
+
+  function drawZoomRectPreview(currentPos){
+    const start = zoomDragStart;
+    clearUiCanvas();
+    uiCtx.strokeStyle='#00ff88';
+    uiCtx.lineWidth=2;
+    uiCtx.setLineDash([6,4]);
+
+    const rect = cameraWrapper.getBoundingClientRect();
+    const scaleX = uiCanvas.width / rect.width;
+    const scaleY = uiCanvas.height/ rect.height;
+
+    const x = Math.min(start.x, currentPos.x) * scaleX;
+    const y = Math.min(start.y, currentPos.y) * scaleY;
+    const w = Math.abs(currentPos.x-start.x) * scaleX;
+    const h = Math.abs(currentPos.y-start.y) * scaleY;
+    uiCtx.strokeRect(x,y,w,h);
+    uiCtx.setLineDash([]);
+  }
+
+  function finalizeZoom(endPosMaybe){
+    const endPos = endPosMaybe || lastZoomPos || zoomDragStart;
+    if(!zoomDragStart || !endPos){ clearUiCanvas(); log('ズーム範囲が決定できませんでした。'); return; }
+
+    const x0=zoomDragStart.x, y0=zoomDragStart.y;
+    const x1=endPos.x, y1=endPos.y;
+    const rx=Math.min(x0,x1);
+    const ry=Math.min(y0,y1);
+    const rw=Math.abs(x1-x0);
+    const rh=Math.abs(y1-y0);
+
+    const minSize=20;
+    if(rw<minSize || rh<minSize){ clearUiCanvas(); log('選択範囲が小さすぎます'); return; }
+
+    const W=cameraWrapper.clientWidth, H=cameraWrapper.clientHeight;
+    const rxC=Math.max(0,Math.min(rx,W));
+    const ryC=Math.max(0,Math.min(ry,H));
+    const rwC=Math.min(rw,W-rxC);
+    const rhC=Math.min(rh,H-ryC);
+
+    zoomRect={ x:rxC, y:ryC, w:rwC, h:rhC };
+    updateZoomTransform();
+    exitZoomMode();
+    log('ズームを適用しました');
+  }
+
+  cameraWrapper.addEventListener('pointerdown', (e)=>{
+    if(!zoomMode) return;
+    e.preventDefault();
+    const pos = getWrapperPosFromClient(e.clientX,e.clientY);
+    zoomDragStart=pos; lastZoomPos=pos;
+  }, {capture:true});
+
+  cameraWrapper.addEventListener('pointermove', (e)=>{
+    if(!zoomMode || !zoomDragStart) return;
+    e.preventDefault();
+    const pos = getWrapperPosFromClient(e.clientX,e.clientY);
+    lastZoomPos=pos;
+    drawZoomRectPreview(pos);
+  }, {capture:true});
+
+  cameraWrapper.addEventListener('pointerup', (e)=>{
+    if(!zoomMode || !zoomDragStart) return;
+    e.preventDefault();
+    const pos = getWrapperPosFromClient(e.clientX,e.clientY);
+    lastZoomPos=pos;
+    finalizeZoom(pos);
+  }, {capture:true});
+
+  // ===== 静止画保存（テキスト反映）=====
+  const compositeCanvas = document.createElement('canvas');
+  const compositeCtx = compositeCanvas.getContext('2d');
+
+  function drawTextItemsOnComposite(ctx){
+    for(const t of textItems){
+      const txt = (t.text||'').trimEnd();
+      if(!txt) continue;
+      ctx.save();
+      ctx.fillStyle=t.color;
+      ctx.font=`${t.size}px ${t.font}`;
+      ctx.textBaseline='top';
+      const lines = txt.split('\n');
+      const lineH = Math.round(t.size*1.25);
+      let yy=t.y;
+      for(const line of lines){
+        ctx.fillText(line, t.x, yy);
+        yy += lineH;
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawCompositeFrame(){
+    const rect = cameraWrapper.getBoundingClientRect();
+    const Wcss = rect.width, Hcss = rect.height;
+    const dpr = window.devicePixelRatio || 1;
+
+    compositeCanvas.width  = Math.floor(Wcss*dpr);
+    compositeCanvas.height = Math.floor(Hcss*dpr);
+
+    const w=compositeCanvas.width, h=compositeCanvas.height;
+    compositeCtx.setTransform(1,0,0,1,0,0);
+    compositeCtx.fillStyle='black';
+    compositeCtx.fillRect(0,0,w,h);
+    compositeCtx.scale(dpr,dpr);
+
+    let s=1, tx=0, ty=0;
+    if(zoomRect){
+      const r=zoomRect;
+      const sZoom = Math.max(Wcss/r.w, Hcss/r.h);
+      const cx=r.x+r.w/2, cy=r.y+r.h/2;
+      tx=(Wcss/2)-sZoom*cx;
+      ty=(Hcss/2)-sZoom*cy;
+      s=sZoom;
+    }
+    compositeCtx.translate(tx,ty);
+    compositeCtx.scale(s,s);
+
+    const vw=video.videoWidth, vh=video.videoHeight;
+    const s0=Math.max(Wcss/vw, Hcss/vh);
+    const vsW=vw*s0, vsH=vh*s0;
+    const dx=(Wcss-vsW)/2, dy=(Hcss-vsH)/2;
+
+    compositeCtx.save();
+    compositeCtx.filter = videoFilterString || 'none';
+    let drawTx=dx, drawTy=dy, scaleX=1, scaleY=1;
+    if(flipH){ drawTx = dx+vsW; scaleX=-1; }
+    if(flipV){ drawTy = dy+vsH; scaleY=-1; }
+    compositeCtx.translate(drawTx,drawTy);
+    compositeCtx.scale(scaleX,scaleY);
+    compositeCtx.scale(s0,s0);
+    compositeCtx.drawImage(video,0,0,vw,vh);
+    compositeCtx.restore();
+
+    compositeCtx.drawImage(drawCanvas, 0,0,drawCanvas.width,drawCanvas.height, 0,0, Wcss,Hcss);
+    drawTextItemsOnComposite(compositeCtx);
+  }
+
+  btnShot.addEventListener('click', ()=>{
+    drawCompositeFrame();
+    const url = compositeCanvas.toDataURL('image/png');
+    const a=document.createElement('a');
+    const ts=new Date().toISOString().replace(/[:.]/g,'-');
+    a.href=url;
+    a.download=`snapshot_${ts}.png`;
+    a.click();
+    log('静止画をPNGとして保存しました（テキストも反映）');
+  });
+
+  // ===== 初期状態 =====
+  textLayer.style.pointerEvents = 'none';
+  renderTextLayer();
+  log('起動しました。カメラ開始→描画/テキストが使えます。');
+</script>
 </body>
 </html>
