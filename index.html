@@ -75,6 +75,9 @@
       object-fit:cover;
     }
     #draw-layer,#ui-layer{ position:absolute; inset:0;}
+    #draw-layer{ z-index:2; }
+    #ui-layer{ z-index:3; }
+    #text-layer{ z-index:4; }
     #draw-layer{ touch-action:none;}
     #ui-layer{ pointer-events:none;}
 
@@ -258,7 +261,7 @@
           <rect x="14" y="18" width="3" height="3" fill="currentColor"/>
         </svg>
       </button>
-      <span class="title">カメラ＋手描き＋ズーム＋映像調整＋静止画／動画／TL</span>
+      <span class="title">カメラ＋手描き＋ズーム＋映像調整＋静止画／動画／TL（録画修正版＋一時停止）</span>
     </div>
     <div id="header-right">
       <div id="header-palette" title="色パレット（白・赤・水色）">
@@ -282,26 +285,36 @@
       <canvas id="ui-layer"></canvas>
       <div id="text-layer"></div>
     </div>
-
     <div id="text-editor"><textarea id="text-editor-ta"></textarea></div>
   </div>
 
   <div id="toolbar">
     <button id="btn-start-camera" class="tool-btn" title="カメラ開始">🎦</button>
+    <button id="btn-freeze" class="tool-btn" title="一時停止（フリーズ）" disabled>⏸</button>
+
     <div class="tool-group-sep"></div>
+
     <button id="btn-shot" class="tool-btn" title="写真撮影（PNG）" disabled>📷</button>
+
     <div class="tool-group-sep"></div>
+
     <button id="btn-start-rec" class="tool-btn small" title="動画録画開始" disabled>⏺</button>
     <button id="btn-stop-rec" class="tool-btn small" title="動画録画停止" disabled>⏹</button>
     <span id="rec-timer" class="rec-timer">00:00</span>
+
     <div class="tool-group-sep"></div>
+
     <button id="btn-start-tl" class="tool-btn small" title="TL録画開始" disabled>⏱</button>
     <button id="btn-stop-tl" class="tool-btn small" title="TL録画停止" disabled>⏹</button>
     <span id="tl-timer" class="rec-timer">00:00</span>
+
     <div class="tool-group-sep"></div>
+
     <button id="btn-zoom-select" class="tool-btn small" title="ズーム領域を選択">🔍</button>
     <button id="btn-zoom-reset" class="tool-btn small" title="ズーム解除">🔁</button>
+
     <div class="tool-group-sep" style="width:8px;"></div>
+
     <button id="video-settings-toggle" class="tool-btn small" title="映像設定の表示/非表示">🎚</button>
   </div>
 
@@ -424,6 +437,8 @@
   const textEditorTa = document.getElementById('text-editor-ta');
 
   const btnStartCamera = document.getElementById('btn-start-camera');
+  const btnFreeze = document.getElementById('btn-freeze');
+
   const btnClear = document.getElementById('btn-clear');
   const btnUndo = document.getElementById('btn-undo');
   const btnShot = document.getElementById('btn-shot');
@@ -431,6 +446,19 @@
   const btnZoomReset = document.getElementById('btn-zoom-reset');
   const videoSettingsToggle = document.getElementById('video-settings-toggle');
   const videoPanel = document.getElementById('video-panel');
+
+  // Recording controls
+  const btnStartRec = document.getElementById('btn-start-rec');
+  const btnStopRec = document.getElementById('btn-stop-rec');
+  const recTimerEl = document.getElementById('rec-timer');
+
+  const btnStartTl = document.getElementById('btn-start-tl');
+  const btnStopTl = document.getElementById('btn-stop-tl');
+  const tlTimerEl = document.getElementById('tl-timer');
+
+  const videoFpsInput = document.getElementById('video-fps');
+  const tlFpsInput = document.getElementById('tl-fps');
+  const tlIntervalInput = document.getElementById('tl-interval');
 
   const swatchButtons = Array.from(document.querySelectorAll('.swatch-btn'));
   const toolEraserBtn = document.getElementById('tool-eraser');
@@ -489,6 +517,40 @@
   let currentVideoDeviceId = null;
   let hasInitializedCamera = false;
 
+  // Freeze (pause camera image)
+  let isFrozen = false;
+  const freezeCanvas = document.createElement('canvas');
+  const freezeCtx = freezeCanvas.getContext('2d');
+  function setFrozenUI(){
+    btnFreeze.textContent = isFrozen ? '▶️' : '⏸';
+    btnFreeze.title = isFrozen ? '再開（解除）' : '一時停止（フリーズ）';
+    // when frozen, disable starting new record/tl (avoid confusion)
+    btnStartRec.disabled = !cameraStream || isFrozen;
+    btnStartTl.disabled  = !cameraStream || isFrozen;
+  }
+  function captureFreezeFrame(){
+    // draw current visible frame (incl zoom/filter/flip) into freezeCanvas and set as poster-like background
+    const rect = cameraWrapper.getBoundingClientRect();
+    const W = Math.max(2, Math.floor(rect.width));
+    const H = Math.max(2, Math.floor(rect.height));
+    freezeCanvas.width = W;
+    freezeCanvas.height = H;
+
+    // Use composite renderer so zoom/filter/flip matches preview
+    drawCompositeFrameTo(freezeCtx, W, H, 1); // dpr=1 for freeze poster
+    const url = freezeCanvas.toDataURL('image/png');
+    video.pause();
+    video.style.visibility = 'hidden';
+    cameraWrapper.style.backgroundImage = `url(${url})`;
+    cameraWrapper.style.backgroundSize = 'cover';
+    cameraWrapper.style.backgroundPosition = 'center';
+  }
+  function unfreeze(){
+    cameraWrapper.style.backgroundImage = '';
+    video.style.visibility = 'visible';
+    try{ video.play(); }catch(e){}
+  }
+
   async function populateCameraList(){
     try{
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -528,15 +590,28 @@
       hasInitializedCamera = true;
       cameraStream.getAudioTracks().forEach(t=> t.enabled = audioEnabled);
       video.srcObject = cameraStream;
+
+      // ensure play
+      try{ await video.play(); }catch(e){}
+
       log(deviceId ? 'カメラを切り替えました':'カメラを開始しました');
 
-      video.addEventListener('loadedmetadata', ()=>{
+      const enableAfterReady = ()=>{
         resizeCanvases();
         btnShot.disabled = false;
-      }, { once:true });
+        btnFreeze.disabled = false;
+        btnStartRec.disabled = false;
+        btnStartTl.disabled = false;
+      };
+      if (video.readyState >= 1) {
+        enableAfterReady();
+      } else {
+        video.addEventListener('loadedmetadata', enableAfterReady, { once:true });
+      }
 
       btnStartCamera.disabled = true;
       await populateCameraList();
+      setFrozenUI();
     }catch(e){
       console.error(e);
       log('カメラが許可されなかったか、選択したカメラが利用できませんでした');
@@ -548,17 +623,47 @@
     if (hasInitializedCamera) initCamera(currentVideoDeviceId);
   });
 
+  btnFreeze.addEventListener('click', ()=>{
+    if(!cameraStream) return;
+    if(isRecording || isTlRecording){
+      log('録画中は一時停止できません');
+      return;
+    }
+    isFrozen = !isFrozen;
+    if(isFrozen){
+      captureFreezeFrame();
+      log('カメラ映像を一時停止しました');
+    }else{
+      unfreeze();
+      log('一時停止を解除しました');
+    }
+    setFrozenUI();
+  });
+  /* ★修正：clickが拾われない環境対策（特にiPad Safari/タッチ） */
+  btnFreeze.addEventListener('pointerdown', (e)=>{
+      e.stopPropagation();
+  }, {passive:true});
+
   // ===== Undo（draw + text）=====
   const undoStack = [];
   const maxUndo = 50;
   function cloneTextItems(arr){ return arr.map(t => ({...t})); }
   function updateUndoButton(){ btnUndo.disabled = undoStack.length===0; }
 
+  // ===== ズーム（先に宣言してTDZ回避）=====
+  let zoomMode = false;
+  let zoomRect = null;
+  let zoomDragStart = null;
+  let lastZoomPos = null;
+
+  // 今のズーム変換
+  let zoomTransform = { s:1, tx:0, ty:0 };
+
   function pushUndo(){
     if (!drawCanvas.width || !drawCanvas.height) return;
     try{
       const snapshot = drawCtx.getImageData(0,0,drawCanvas.width,drawCanvas.height);
-      undoStack.push({ img:snapshot, texts:cloneTextItems(textItems), selected:selectedTextId, zoom: {...zoomTransform} });
+      undoStack.push({ img:snapshot, texts:cloneTextItems(textItems), selected:selectedTextId, zoomRect: zoomRect ? {...zoomRect} : null });
       if (undoStack.length > maxUndo) undoStack.shift();
       updateUndoButton();
     }catch(e){ console.error(e); }
@@ -570,24 +675,18 @@
       drawCtx.putImageData(s.img,0,0);
       textItems = cloneTextItems(s.texts);
       selectedTextId = s.selected || null;
+      zoomRect = s.zoomRect ? {...s.zoomRect} : null;
+      updateZoomTransform();
+
       hideTextEditor();
       uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height);
-      renderTextLayer();     // 再構築はUndo時のみOK
+      renderTextLayer();
       log('1つ前の状態に戻しました');
     }catch(e){ console.error(e); }
     updateUndoButton();
   }
   btnUndo.addEventListener('click', performUndo);
   updateUndoButton();
-
-  // ===== ズーム（先に宣言してTDZ回避）=====
-  let zoomMode = false;
-  let zoomRect = null;
-  let zoomDragStart = null;
-  let lastZoomPos = null;
-
-  // ★ 今のズーム変換（cameraInnerの transform を逆算するため保持）
-  let zoomTransform = { s:1, tx:0, ty:0 };
 
   // ===== サイズ調整 =====
   function resizeCanvases(){
@@ -602,6 +701,10 @@
       c.style.width = width+'px';
       c.style.height = height+'px';
     });
+    if (toolMode !== 'text') {
+      drawCanvas.style.pointerEvents = 'auto';
+      textLayer.style.pointerEvents = 'none';
+    }
 
     drawCtx.setTransform(1,0,0,1,0,0);
     uiCtx.setTransform(1,0,0,1,0,0);
@@ -851,7 +954,6 @@
   let textItems = [];
   let selectedTextId = null;
 
-  // ★ドラッグ/リサイズ状態（グローバル）
   let isDraggingText = false;
   let isResizingText = false;
   let dragOffset = {x:0,y:0};
@@ -870,7 +972,6 @@
     content.innerHTML = escapeHtml(item.text || '');
   }
 
-  // ★ 重要：選択だけではDOMを作り直さない（左上ワープ防止）
   function updateSelectionVisual(){
     const boxes = textLayer.querySelectorAll('.text-box');
     boxes.forEach(b=>{
@@ -907,23 +1008,17 @@
 
       applyTextStyleToElement(box,item);
 
-      // ===== ここも重要：座標計算は「内側座標」で行う（ズーム対応 & ワープ防止）=====
       box.addEventListener('pointerdown', (e)=>{
         e.stopPropagation();
         if (zoomMode) return;
 
-        // 編集中textareaが開いている場合：操作開始前に確定しない（blur抑制）
         suppressBlurCommit = true;
 
-        // ★ DOM作り直しはしない。クラス付け替えだけ
         selectTextSoft(item.id);
-
-        // undoは操作開始1回だけ
         pushUndo();
 
         activePointerId = e.pointerId;
 
-        // 内側座標（cameraInner座標）で計算
         const p = clientToInnerCss(e.clientX, e.clientY);
 
         if (e.target.classList.contains('resize-handle')){
@@ -970,15 +1065,11 @@
         if (isDraggingText){
           let nx = p.x - dragOffset.x;
           let ny = p.y - dragOffset.y;
-
-          // 少しはみ出し許容
           nx = Math.max(-500, Math.min(nx, cameraWrapper.clientWidth + 500));
           ny = Math.max(-500, Math.min(ny, cameraWrapper.clientHeight + 500));
-
           it.x = nx; it.y = ny;
           box.style.left = it.x+'px';
           box.style.top  = it.y+'px';
-
           if (textEditor.style.display !== 'none') positionEditorToSelected();
         }
 
@@ -989,7 +1080,6 @@
           it.h = Math.max(18, resizeStart.startH + dy);
           box.style.width  = it.w+'px';
           box.style.height = it.h+'px';
-
           if (textEditor.style.display !== 'none') positionEditorToSelected();
         }
       });
@@ -1053,7 +1143,7 @@
     pushUndo();
     textItems.push(item);
     selectedTextId = id;
-    renderTextLayer();                 // 追加時は再構築OK
+    renderTextLayer();
     showPanelUnder(textConfigPanel, toolTextBtn);
     beginEditSelectedText(true);
     log('テキストボックスを追加しました（編集して確定してください）');
@@ -1100,17 +1190,12 @@
     const it = getSelectedText();
     if(!it) return;
     it.text = textEditorTa.value;
-
     hideTextEditor();
-
-    // 内容変更は再構築してOK（操作中ではない）
     renderTextLayer();
     log('テキストを更新しました');
   }
 
-  function hideTextEditor(){
-    textEditor.style.display = 'none';
-  }
+  function hideTextEditor(){ textEditor.style.display = 'none'; }
 
   let suppressBlurCommit = false;
   textEditorTa.addEventListener('blur', ()=>{
@@ -1132,7 +1217,6 @@
     }
   });
 
-  // 設定反映
   textColorInput.addEventListener('input', ()=>{
     const it = getSelectedText();
     const v = textColorInput.value;
@@ -1176,20 +1260,15 @@
     log('テキストを削除しました');
   });
 
-  // ===== クリック位置→cameraInner座標（ズーム逆変換）=====
   function clientToInnerCss(clientX, clientY){
     const wrapRect = cameraWrapper.getBoundingClientRect();
     let x = clientX - wrapRect.left;
     let y = clientY - wrapRect.top;
-
-    // cameraInner transform: translate(tx,ty) scale(s)
-    // 逆変換: (x - tx)/s
     x = (x - zoomTransform.tx) / zoomTransform.s;
     y = (y - zoomTransform.ty) / zoomTransform.s;
     return {x,y};
   }
 
-  // wrapper外クリックで選択解除（text以外なら）
   cameraWrapper.addEventListener('pointerdown', (e)=>{
     if(zoomMode) return;
     const path = e.composedPath ? e.composedPath() : [];
@@ -1212,12 +1291,8 @@
     const y = (e.clientY - rect.top)  * (drawCanvas.height/ rect.height);
     return {x,y};
   }
-  function getWrapperPosCss(e){
-    const rect = cameraWrapper.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  }
 
-  // ===== テキスト追加：背景クリックで追加（既存box/ editorは除外）=====
+  // テキスト追加
   textLayer.addEventListener('pointerdown', (e) => {
     if (zoomMode) return;
     if (toolMode !== 'text') return;
@@ -1229,13 +1304,13 @@
     e.preventDefault();
     e.stopPropagation();
 
-    // 追加位置は「cameraInner座標」で保存（ズームでも正しい）
     const p = clientToInnerCss(e.clientX, e.clientY);
     addTextBoxAt(p.x, p.y);
   }, { passive: false });
 
   function startDraw(e){
     if(zoomMode) return;
+    if(toolMode==='text') return;
     e.preventDefault();
     pushUndo();
 
@@ -1461,7 +1536,7 @@
     finalizeZoom(pos);
   }, {capture:true});
 
-  // ===== 静止画保存（テキスト反映）=====
+  // ===== 静止画/録画共通の合成描画 =====
   const compositeCanvas = document.createElement('canvas');
   const compositeCtx = compositeCanvas.getContext('2d');
 
@@ -1473,7 +1548,7 @@
       ctx.fillStyle=t.color;
       ctx.font=`${t.size}px ${t.font}`;
       ctx.textBaseline='top';
-      const lines = txt.split('\n');
+      const lines = txt.split('\\n');
       const lineH = Math.round(t.size*1.25);
       let yy=t.y;
       for(const line of lines){
@@ -1484,19 +1559,14 @@
     }
   }
 
-  function drawCompositeFrame(){
-    const rect = cameraWrapper.getBoundingClientRect();
-    const Wcss = rect.width, Hcss = rect.height;
-    const dpr = window.devicePixelRatio || 1;
-
-    compositeCanvas.width  = Math.floor(Wcss*dpr);
-    compositeCanvas.height = Math.floor(Hcss*dpr);
-
-    const w=compositeCanvas.width, h=compositeCanvas.height;
-    compositeCtx.setTransform(1,0,0,1,0,0);
-    compositeCtx.fillStyle='black';
-    compositeCtx.fillRect(0,0,w,h);
-    compositeCtx.scale(dpr,dpr);
+  // draw composite frame onto arbitrary ctx with explicit size and dprScale
+  function drawCompositeFrameTo(ctx, Wcss, Hcss, dprScale){
+    // ctx uses pixel units already (caller sets canvas size)
+    // Here we draw in CSS units by scaling
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.fillStyle='black';
+    ctx.fillRect(0,0,Wcss*dprScale,Hcss*dprScale);
+    ctx.scale(dprScale,dprScale);
 
     let s=1, tx=0, ty=0;
     if(zoomRect){
@@ -1507,27 +1577,42 @@
       ty=(Hcss/2)-sZoom*cy;
       s=sZoom;
     }
-    compositeCtx.translate(tx,ty);
-    compositeCtx.scale(s,s);
+    ctx.translate(tx,ty);
+    ctx.scale(s,s);
 
     const vw=video.videoWidth, vh=video.videoHeight;
+    if(!vw || !vh) return;
     const s0=Math.max(Wcss/vw, Hcss/vh);
     const vsW=vw*s0, vsH=vh*s0;
     const dx=(Wcss-vsW)/2, dy=(Hcss-vsH)/2;
 
-    compositeCtx.save();
-    compositeCtx.filter = videoFilterString || 'none';
+    ctx.save();
+    ctx.filter = videoFilterString || 'none';
     let drawTx=dx, drawTy=dy, scaleX=1, scaleY=1;
     if(flipH){ drawTx = dx+vsW; scaleX=-1; }
     if(flipV){ drawTy = dy+vsH; scaleY=-1; }
-    compositeCtx.translate(drawTx,drawTy);
-    compositeCtx.scale(scaleX,scaleY);
-    compositeCtx.scale(s0,s0);
-    compositeCtx.drawImage(video,0,0,vw,vh);
-    compositeCtx.restore();
+    ctx.translate(drawTx,drawTy);
+    ctx.scale(scaleX,scaleY);
+    ctx.scale(s0,s0);
 
-    compositeCtx.drawImage(drawCanvas, 0,0,drawCanvas.width,drawCanvas.height, 0,0, Wcss,Hcss);
-    drawTextItemsOnComposite(compositeCtx);
+    // If frozen, use freeze frame from background? simplest: use current video still.
+    ctx.drawImage(video,0,0,vw,vh);
+    ctx.restore();
+
+    // draw drawing layer and texts
+    ctx.drawImage(drawCanvas, 0,0,drawCanvas.width,drawCanvas.height, 0,0, Wcss,Hcss);
+    drawTextItemsOnComposite(ctx);
+  }
+
+  function drawCompositeFrame(){
+    const rect = cameraWrapper.getBoundingClientRect();
+    const Wcss = rect.width, Hcss = rect.height;
+    const dpr = window.devicePixelRatio || 1;
+
+    compositeCanvas.width  = Math.floor(Wcss*dpr);
+    compositeCanvas.height = Math.floor(Hcss*dpr);
+
+    drawCompositeFrameTo(compositeCtx, Wcss, Hcss, dpr);
   }
 
   btnShot.addEventListener('click', ()=>{
@@ -1541,9 +1626,325 @@
     log('静止画をPNGとして保存しました（テキストも反映）');
   });
 
-  // ===== 初期状態 =====
+  // ===== 録画（動画） =====
+  let isRecording = false;
+  let recorder = null;
+  let recordChunks = [];
+  let recStartTs = 0;
+  let recTimerInterval = null;
+
+  // We record from compositeCanvas stream, NOT from video, so zoom/filter/text are included reliably.
+  function pickSupportedMime(){
+    const candidates = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/webm'
+    ];
+    return candidates.find(t => MediaRecorder.isTypeSupported(t)) || '';
+  }
+
+  function fmtTime(ms){
+    const sec = Math.floor(ms/1000);
+    const m = String(Math.floor(sec/60)).padStart(2,'0');
+    const s = String(sec%60).padStart(2,'0');
+    return `${m}:${s}`;
+  }
+
+  function startRecTimer(){
+    recStartTs = performance.now();
+    recTimerEl.textContent = '00:00';
+    if(recTimerInterval) clearInterval(recTimerInterval);
+    recTimerInterval = setInterval(()=>{
+      recTimerEl.textContent = fmtTime(performance.now()-recStartTs);
+    }, 250);
+  }
+  function stopRecTimer(){
+    if(recTimerInterval) clearInterval(recTimerInterval);
+    recTimerInterval = null;
+    recTimerEl.textContent = '00:00';
+  }
+
+  // draw loop for recording at desired fps
+  let recDrawRaf = null;
+  function startCompositeDrawLoop(targetFps){
+    const fps = Math.max(1, Math.min(60, targetFps||30));
+    const frameMs = 1000 / fps;
+    let last = 0;
+
+    const rect = cameraWrapper.getBoundingClientRect();
+    const Wcss = rect.width, Hcss = rect.height;
+    const dpr = window.devicePixelRatio || 1;
+    compositeCanvas.width  = Math.floor(Wcss*dpr);
+    compositeCanvas.height = Math.floor(Hcss*dpr);
+
+    function loop(ts){
+      if(!isRecording) return;
+      if(ts - last >= frameMs){
+        last = ts;
+        // If frozen, keep drawing last frame: composite still uses video current but video is hidden/paused.
+        // So we reuse freezeFrame by drawing from freezeCanvas if frozen.
+        if(isFrozen){
+          // draw freezeCanvas as background
+          compositeCtx.setTransform(1,0,0,1,0,0);
+          compositeCtx.drawImage(freezeCanvas, 0,0, compositeCanvas.width, compositeCanvas.height);
+          // then overlay draw/text with zoom transform (freeze is already zoomed, so we overlay in screen space)
+          const W = Wcss, H = Hcss;
+          compositeCtx.save();
+          compositeCtx.scale(dpr,dpr);
+          // overlay draw and text in current zoomed space
+          // easiest: redraw overlays by calling drawCompositeFrameTo but background replaced; so:
+          compositeCtx.restore();
+          // Just call full draw for overlays using video (will be stale) => instead: do complete drawCompositeFrameTo using video won't work.
+          // Simpler: while frozen, do not allow recording start; already disabled. So this block shouldn't happen.
+        }else{
+          drawCompositeFrameTo(compositeCtx, Wcss, Hcss, dpr);
+        }
+      }
+      recDrawRaf = requestAnimationFrame(loop);
+    }
+    recDrawRaf = requestAnimationFrame(loop);
+  }
+  function stopCompositeDrawLoop(){
+    if(recDrawRaf) cancelAnimationFrame(recDrawRaf);
+    recDrawRaf = null;
+  }
+
+  async function startRecording(){
+    if(!cameraStream){ log('カメラ開始後に録画できます'); return; }
+    if(isFrozen){ log('一時停止中は録画できません'); return; }
+    if(isRecording){ return; }
+    if(isTlRecording){ log('TL録画中は動画録画できません'); return; }
+
+    // prepare composite canvas and stream
+    const targetFps = Number(videoFpsInput.value)||30;
+    startCompositeDrawLoop(targetFps);
+
+    const stream = compositeCanvas.captureStream(Math.max(1, Math.min(60, targetFps)));
+
+    // add audio if enabled
+    if(audioEnabled && cameraStream.getAudioTracks().length){
+      cameraStream.getAudioTracks().forEach(track=>{
+        try{ stream.addTrack(track); }catch(e){}
+      });
+    }
+
+    const mimeType = pickSupportedMime();
+    recordChunks = [];
+    try{
+      recorder = new MediaRecorder(stream, mimeType? { mimeType } : undefined);
+    }catch(e){
+      console.error(e);
+      log('録画開始に失敗しました（MediaRecorderが利用できない可能性）');
+      stopCompositeDrawLoop();
+      return;
+    }
+
+    recorder.ondataavailable = (e)=>{
+      if(e.data && e.data.size>0) recordChunks.push(e.data);
+    };
+    recorder.onstop = ()=>{
+      stopCompositeDrawLoop();
+      stopRecTimer();
+
+      const blob = new Blob(recordChunks, { type: recorder.mimeType || 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const ts=new Date().toISOString().replace(/[:.]/g,'-');
+      a.href = url;
+      a.download = `record_${ts}.webm`;
+      a.click();
+      setTimeout(()=>URL.revokeObjectURL(url), 30000);
+
+      log('動画を保存しました（WebM）');
+      recordChunks = [];
+      recorder = null;
+      isRecording = false;
+
+      btnStartRec.disabled = isFrozen || !cameraStream;
+      btnStopRec.disabled = true;
+    };
+
+    recorder.start(200); // timeslice
+    isRecording = true;
+    startRecTimer();
+    btnStartRec.disabled = true;
+    btnStopRec.disabled = false;
+    log('動画録画を開始しました');
+  }
+
+  function stopRecording(){
+    if(!isRecording || !recorder) return;
+    try{ recorder.stop(); }catch(e){}
+    btnStopRec.disabled = true;
+    log('動画録画を停止しました（保存処理中）');
+  }
+
+  btnStartRec.addEventListener('click', startRecording);
+  btnStopRec.addEventListener('click', stopRecording);
+  btnStopRec.disabled = true;
+
+  // ===== タイムラプス =====
+  let isTlRecording = false;
+  let tlFrames = [];
+  let tlStartTs = 0;
+  let tlTimerInterval = null;
+  let tlIntervalHandle = null;
+
+  function startTlTimer(){
+    tlStartTs = performance.now();
+    tlTimerEl.textContent = '00:00';
+    if(tlTimerInterval) clearInterval(tlTimerInterval);
+    tlTimerInterval = setInterval(()=>{
+      tlTimerEl.textContent = fmtTime(performance.now()-tlStartTs);
+    }, 250);
+  }
+  function stopTlTimer(){
+    if(tlTimerInterval) clearInterval(tlTimerInterval);
+    tlTimerInterval = null;
+    tlTimerEl.textContent = '00:00';
+  }
+
+  function frameToBlob(){
+    // capture composite PNG
+    drawCompositeFrame();
+    return new Promise((resolve)=>{
+      compositeCanvas.toBlob((b)=>resolve(b), 'image/png');
+    });
+  }
+
+  async function startTimelapse(){
+    if(!cameraStream){ log('カメラ開始後にTL録画できます'); return; }
+    if(isFrozen){ log('一時停止中はTL録画できません'); return; }
+    if(isTlRecording){ return; }
+    if(isRecording){ log('動画録画中はTL録画できません'); return; }
+
+    isTlRecording = true;
+    tlFrames = [];
+    btnStartTl.disabled = true;
+    btnStopTl.disabled = false;
+
+    startTlTimer();
+
+    const intervalMs = Math.max(100, Number(tlIntervalInput.value)||500);
+
+    log(`TL録画を開始しました（間隔 ${intervalMs}ms）`);
+
+    // capture immediately then interval
+    const cap = async ()=>{
+      if(!isTlRecording) return;
+      const blob = await frameToBlob();
+      if(blob) tlFrames.push(blob);
+    };
+    await cap();
+
+    tlIntervalHandle = setInterval(cap, intervalMs);
+  }
+
+  async function stopTimelapse(){
+    if(!isTlRecording) return;
+    isTlRecording = false;
+    if(tlIntervalHandle) clearInterval(tlIntervalHandle);
+    tlIntervalHandle = null;
+    stopTlTimer();
+
+    btnStartTl.disabled = isFrozen || !cameraStream;
+    btnStopTl.disabled = true;
+
+    if(!tlFrames.length){
+      log('TLフレームがありませんでした');
+      return;
+    }
+
+    // Encode as WebM using MediaRecorder from canvas stream replay.
+    // Approach: draw each stored image to temp canvas at fps, record.
+    const fps = Math.max(1, Math.min(60, Number(tlFpsInput.value)||10));
+    const tmp = document.createElement('canvas');
+    const tctx = tmp.getContext('2d');
+    const rect = cameraWrapper.getBoundingClientRect();
+    const W = Math.max(2, Math.floor(rect.width));
+    const H = Math.max(2, Math.floor(rect.height));
+    tmp.width = W;
+    tmp.height = H;
+
+    const stream = tmp.captureStream(fps);
+    const mimeType = pickSupportedMime();
+
+    let tlRec;
+    let chunks=[];
+    try{
+      tlRec = new MediaRecorder(stream, mimeType? { mimeType } : undefined);
+    }catch(e){
+      console.error(e);
+      log('TL保存に失敗しました（MediaRecorder利用不可）');
+      return;
+    }
+
+    tlRec.ondataavailable = (e)=>{ if(e.data && e.data.size>0) chunks.push(e.data); };
+    const stopped = new Promise((resolve)=> tlRec.onstop = resolve);
+    tlRec.start(200);
+
+    // play back frames at fps
+    let idx=0;
+    const frameDur = 1000/fps;
+
+    const imgs = [];
+    for(const b of tlFrames){
+      const url = URL.createObjectURL(b);
+      const img = new Image();
+      img.src = url;
+      await img.decode().catch(()=>{});
+      imgs.push({img,url});
+    }
+
+    await new Promise((resolve)=>{
+      const timer = setInterval(()=>{
+        if(idx >= imgs.length){
+          clearInterval(timer);
+          resolve();
+          return;
+        }
+        const {img} = imgs[idx];
+        tctx.setTransform(1,0,0,1,0,0);
+        tctx.clearRect(0,0,W,H);
+        // fill black
+        tctx.fillStyle='black';
+        tctx.fillRect(0,0,W,H);
+        // draw image fit
+        tctx.drawImage(img,0,0,W,H);
+        idx++;
+      }, frameDur);
+    });
+
+    // stop
+    tlRec.stop();
+    await stopped;
+
+    imgs.forEach(o=> URL.revokeObjectURL(o.url));
+
+    const blob = new Blob(chunks, { type: tlRec.mimeType || 'video/webm' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const ts=new Date().toISOString().replace(/[:.]/g,'-');
+    a.href = url;
+    a.download = `timelapse_${ts}.webm`;
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(url), 30000);
+
+    log('タイムラプスを保存しました（WebM）');
+    tlFrames = [];
+  }
+
+  btnStartTl.addEventListener('click', startTimelapse);
+  btnStopTl.addEventListener('click', stopTimelapse);
+  btnStopTl.disabled = true;
+
+  // ===== ズーム時のポインタ制御 =====
+  // textLayer pointer default
   textLayer.style.pointerEvents = 'none';
-  renderTextLayer();
+
+  // ===== 初期ログ =====
   log('起動しました。カメラ開始→描画/テキストが使えます。');
 </script>
 </body>
