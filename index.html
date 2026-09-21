@@ -889,6 +889,7 @@
   let focusAnimRaf = null;
   let focusRenderProgress = 1;
   let focusOpacity = 1;
+  let focusRetract = 0;
   function cloneFocusEffect(e){
     if(!e) return null;
     return { ...e, lines: (e.lines||[]).map(l=>({...l})) };
@@ -931,12 +932,13 @@
       focusEffect = cloneFocusEffect(s.focusEffect);
       focusRenderProgress = 1;
       focusOpacity = Number.isFinite(s.focusOpacity) ? s.focusOpacity : 1;
+      focusRetract = 0;
       cancelFocusAnimation();
       updateZoomTransform();
 
       hideTextEditor();
       uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height);
-      renderFocusEffect(1, focusOpacity);
+      renderFocusEffect(1, focusOpacity, 0);
       renderTextLayer();
       log('1つ前の状態に戻しました');
     }catch(e){ console.error(e); }
@@ -974,6 +976,7 @@
     focusEffect = null;
     focusRenderProgress = 1;
     focusOpacity = 1;
+    focusRetract = 0;
     cancelFocusAnimation();
     updateZoomTransform();
 
@@ -1908,7 +1911,7 @@
     return {cx,cy,r,W,H,lines};
   }
 
-  function drawFocusEffectTo(ctx, effect, progress=1, targetW=null, targetH=null, opacity=1){
+  function drawFocusEffectTo(ctx, effect, progress=1, targetW=null, targetH=null, opacity=1, retract=0){
     if(!effect || !effect.lines || opacity<=0) return;
     const W=targetW || effect.W, H=targetH || effect.H;
     const sx=W/effect.W, sy=H/effect.H;
@@ -1916,15 +1919,17 @@
     ctx.globalAlpha *= Math.max(0,Math.min(1,opacity));
     ctx.scale(sx,sy);
     const ease=t=>1-Math.pow(1-t,3);
+    const shrink=Math.max(0,Math.min(1,retract));
     for(const line of effect.lines){
       const local=Math.max(0,Math.min(1,(progress-line.delay)/(1-line.delay)));
       if(local<=0) continue;
       const p=ease(local);
       const dx=Math.cos(line.a), dy=Math.sin(line.a);
-      const d0=line.outer;
-      const d1=line.outer + (line.inner-line.outer)*p;
-      const x0=effect.cx+dx*d0, y0=effect.cy+dy*d0;
-      const x1=effect.cx+dx*d1, y1=effect.cy+dy*d1;
+      const visibleInner=line.outer + (line.inner-line.outer)*p;
+      const visibleOuter=line.outer + (visibleInner-line.outer)*shrink;
+      if(Math.abs(visibleInner-visibleOuter) < 0.8) continue;
+      const x0=effect.cx+dx*visibleOuter, y0=effect.cy+dy*visibleOuter;
+      const x1=effect.cx+dx*visibleInner, y1=effect.cy+dy*visibleInner;
 
       // 白い細い縁取り＋黒線で、明暗どちらの映像でも見失いにくくする
       ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1);
@@ -1937,42 +1942,46 @@
     ctx.restore();
   }
 
-  function renderFocusEffect(progress=focusRenderProgress, opacity=focusOpacity){
+  function renderFocusEffect(progress=focusRenderProgress, opacity=focusOpacity, retract=focusRetract){
     clearFocusCanvas();
     if(!focusEffect || opacity<=0) return;
     const rect=cameraWrapper.getBoundingClientRect();
     const dpr=window.devicePixelRatio||1;
     focusCtx.setTransform(dpr,0,0,dpr,0,0);
-    drawFocusEffectTo(focusCtx, focusEffect, progress, rect.width, rect.height, opacity);
+    drawFocusEffectTo(focusCtx, focusEffect, progress, rect.width, rect.height, opacity, retract);
   }
 
   function animateFocusEffect(){
     cancelFocusAnimation();
     const start=performance.now();
-    const revealMs=420;
-    const holdMs=650;
-    const fadeMs=2400;
-    const totalMs=revealMs+holdMs+fadeMs;
+    const revealMs=400;
+    const holdMs=400;
+    const retractMs=400;
+    const totalMs=revealMs+holdMs+retractMs;
     const smooth=t=>t*t*(3-2*t);
     const frame=(now)=>{
       const elapsed=now-start;
       if(elapsed < revealMs){
         focusRenderProgress=Math.max(0,Math.min(1,elapsed/revealMs));
         focusOpacity=1;
+        focusRetract=0;
       }else if(elapsed < revealMs+holdMs){
         focusRenderProgress=1;
         focusOpacity=1;
+        focusRetract=0;
       }else{
         focusRenderProgress=1;
-        const f=Math.max(0,Math.min(1,(elapsed-revealMs-holdMs)/fadeMs));
-        focusOpacity=1-smooth(f);
+        focusOpacity=1;
+        const f=Math.max(0,Math.min(1,(elapsed-revealMs-holdMs)/retractMs));
+        focusRetract=smooth(f);
       }
-      renderFocusEffect(focusRenderProgress,focusOpacity);
+      renderFocusEffect(focusRenderProgress,focusOpacity,focusRetract);
       if(elapsed < totalMs){
         focusAnimRaf=requestAnimationFrame(frame);
       }else{
         focusAnimRaf=null;
         focusOpacity=0;
+        focusRetract=1;
         clearFocusCanvas();
         // 集中線は一時的な注目効果。消えた後は合成録画にも残さない。
         focusEffect=null;
@@ -2010,6 +2019,7 @@
     focusEffect = null;
     focusRenderProgress = 1;
     focusOpacity = 1;
+    focusRetract = 0;
     clearFocusCanvas();
     focusHint.classList.add('visible');
     btnFocusLines.classList.add('active');
@@ -2026,7 +2036,7 @@
     btnFocusLines.classList.remove('active');
     drawCanvas.style.pointerEvents=(toolMode==='text')?'none':'auto';
     textLayer.style.pointerEvents=(toolMode==='text')?'auto':'none';
-    if(restoreEffect && focusEffect){ focusRenderProgress = 1; focusOpacity = 1; renderFocusEffect(1,1); }
+    if(restoreEffect && focusEffect){ focusRenderProgress = 1; focusOpacity = 1; focusRetract = 0; renderFocusEffect(1,1,0); }
   }
 
   function finalizeFocus(endPos){
@@ -2044,6 +2054,7 @@
     focusEffect=makeFocusEffect(focusDragStart.x,focusDragStart.y,Math.min(r,maxR*.86),W,H);
     focusRenderProgress = 0;
     focusOpacity = 1;
+    focusRetract = 0;
     exitFocusMode(false);
     animateFocusEffect();
     log('集中線を追加しました');
