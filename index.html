@@ -59,7 +59,14 @@
     .swatch-circle{ border-radius:50%; background:#fff; transition:width .15s ease,height .15s ease;}
     .swatch-pen{ position:absolute; font-size:14px; pointer-events:none; text-shadow:0 0 2px rgba(0,0,0,0.6);}
 
-    .tool-toggle.active{ outline:2px solid rgba(125,211,252,0.95); outline-offset:2px;}
+    .tool-toggle.active,.tool-btn.active{ outline:2px solid rgba(125,211,252,0.95); outline-offset:2px;}
+
+    .icon{ width:20px; height:20px; display:block; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; }
+    .tool-btn.small .icon{ width:18px; height:18px; }
+    #header-right .icon{ width:20px; height:20px; }
+    .swatch-pen-svg{ position:absolute; width:15px; height:15px; pointer-events:none; filter:drop-shadow(0 0 1px rgba(0,0,0,.75)); }
+    .swatch-pen-svg .icon{ width:15px; height:15px; stroke-width:2; }
+    .tool-btn:focus-visible,.tool-toggle:focus-visible,#btn-clear:focus-visible,#btn-undo:focus-visible,#log-toggle:focus-visible{ outline:2px solid #7dd3fc; outline-offset:2px; }
 
     #camera-wrapper{
       position:relative; flex:1; background:#000;
@@ -78,6 +85,7 @@
     #draw-layer{ z-index:2; }
     #ui-layer{ z-index:3; }
     #text-layer{ z-index:4; }
+    #focus-layer{ position:absolute; inset:0; z-index:5; pointer-events:none; touch-action:none; }
     #draw-layer{ touch-action:none;}
     #ui-layer{ pointer-events:none;}
 
@@ -229,19 +237,21 @@
     #log-panel.open{ display:block;}
     #log{ max-height:40vh; overflow-y:auto; white-space:pre-line;}
 
-    #zoom-hint{
+    #zoom-hint,#focus-hint{
       position:fixed; top:50%; left:50%;
       transform:translate(-50%,-50%);
-      background:rgba(0,0,0,0.7);
-      padding:6px 10px;
+      background:rgba(0,0,0,0.74);
+      padding:7px 12px;
+      border:1px solid rgba(255,255,255,.18);
       border-radius:999px;
       font-size:12px;
       color:#fff;
       z-index:25;
       display:none;
       pointer-events:none;
+      box-shadow:0 4px 18px rgba(0,0,0,.28);
     }
-    #zoom-hint.visible{ display:block;}
+    #zoom-hint.visible,#focus-hint.visible{ display:block;}
   </style>
 </head>
 <body>
@@ -265,16 +275,16 @@
     </div>
     <div id="header-right">
       <div id="header-palette" title="色パレット（白・赤・水色）">
-        <button class="swatch-btn" data-pen-index="0" title="ペン1"><span class="swatch-circle"></span><span class="swatch-pen">✏️</span></button>
-        <button class="swatch-btn" data-pen-index="1" title="ペン2"><span class="swatch-circle"></span><span class="swatch-pen">✏️</span></button>
-        <button class="swatch-btn" data-pen-index="2" title="ペン3"><span class="swatch-circle"></span><span class="swatch-pen">✏️</span></button>
+        <button class="swatch-btn" data-pen-index="0" title="ペン1" aria-label="ペン1"><span class="swatch-circle"></span><span class="swatch-pen-svg"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4.2-1 10-10-3.2-3.2-10 10L4 20z"/><path d="M13.8 7l3.2 3.2"/></svg></span></button>
+        <button class="swatch-btn" data-pen-index="1" title="ペン2" aria-label="ペン2"><span class="swatch-circle"></span><span class="swatch-pen-svg"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4.2-1 10-10-3.2-3.2-10 10L4 20z"/><path d="M13.8 7l3.2 3.2"/></svg></span></button>
+        <button class="swatch-btn" data-pen-index="2" title="ペン3" aria-label="ペン3"><span class="swatch-circle"></span><span class="swatch-pen-svg"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4.2-1 10-10-3.2-3.2-10 10L4 20z"/><path d="M13.8 7l3.2 3.2"/></svg></span></button>
       </div>
-      <button id="tool-eraser" class="tool-toggle" title="消しゴム（描線を削除）">🧽</button>
-      <button id="tool-shape" class="tool-toggle" title="面（四角）">□</button>
-      <button id="tool-text" class="tool-toggle" title="テキスト">T</button>
-      <button id="btn-undo" title="一つ戻す（Undo）">↶</button>
-      <button id="btn-clear" title="手描きクリア"><span class="eraser-icon" aria-hidden="true"></span></button>
-      <button id="log-toggle" title="ログ表示／非表示">ℹ️</button>
+      <button id="tool-eraser" class="tool-toggle" title="消しゴム（描線を削除）" aria-label="消しゴム"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 15.5l7.8-9a2 2 0 0 1 2.9-.1l4.4 4a2 2 0 0 1 .1 2.9l-5.4 6.2H8.4l-3.7-3.2a.6.6 0 0 1-.2-.8z"/><path d="M10 19.5h10"/><path d="M8.1 11.4l6.1 5.3"/></svg></button>
+      <button id="tool-shape" class="tool-toggle" title="面（四角）" aria-label="四角形"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="1.5"/></svg></button>
+      <button id="tool-text" class="tool-toggle" title="テキスト" aria-label="テキスト"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M12 6v13M8.5 19h7"/></svg></button>
+      <button id="btn-undo" title="一つ戻す（Undo）" aria-label="一つ戻す"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7L4 12l5 5"/><path d="M5 12h8a6 6 0 0 1 6 6"/></svg></button>
+      <button id="btn-clear" title="描画と集中線をクリア" aria-label="描画と集中線をクリア"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg></button>
+      <button id="log-toggle" title="ログ表示／非表示" aria-label="情報"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 10v6"/><path d="M12 7.2h.01"/></svg></button>
     </div>
   </header>
 
@@ -285,37 +295,39 @@
       <canvas id="ui-layer"></canvas>
       <div id="text-layer"></div>
     </div>
+    <canvas id="focus-layer"></canvas>
     <div id="text-editor"><textarea id="text-editor-ta"></textarea></div>
   </div>
 
   <div id="toolbar">
-    <button id="btn-start-camera" class="tool-btn" title="カメラ開始">🎦</button>
-    <button id="btn-freeze" class="tool-btn" title="一時停止（フリーズ）" disabled>⏸</button>
+    <button id="btn-start-camera" class="tool-btn" title="カメラ開始" aria-label="カメラ開始"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="12" height="10" rx="2"/><path d="M16 10l4-2v8l-4-2z"/></svg></button>
+    <button id="btn-freeze" class="tool-btn" title="一時停止（フリーズ）" aria-label="一時停止" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7v10M15 7v10"/></svg></button>
 
     <div class="tool-group-sep"></div>
 
-    <button id="btn-shot" class="tool-btn" title="写真撮影（PNG）" disabled>📷</button>
+    <button id="btn-shot" class="tool-btn" title="写真撮影（PNG）" aria-label="写真撮影" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h3l1.3-2h5.4L16 8h3a2 2 0 0 1 2 2v8H3v-8a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="3.3"/></svg></button>
 
     <div class="tool-group-sep"></div>
 
-    <button id="btn-start-rec" class="tool-btn small" title="動画録画開始" disabled>⏺</button>
-    <button id="btn-stop-rec" class="tool-btn small" title="動画録画停止" disabled>⏹</button>
+    <button id="btn-start-rec" class="tool-btn small" title="動画録画開始" aria-label="動画録画開始" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5"/></svg></button>
+    <button id="btn-stop-rec" class="tool-btn small" title="動画録画停止" aria-label="動画録画停止" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1"/></svg></button>
     <span id="rec-timer" class="rec-timer">00:00</span>
 
     <div class="tool-group-sep"></div>
 
-    <button id="btn-start-tl" class="tool-btn small" title="TL録画開始" disabled>⏱</button>
-    <button id="btn-stop-tl" class="tool-btn small" title="TL録画停止" disabled>⏹</button>
+    <button id="btn-start-tl" class="tool-btn small" title="タイムラプス録画開始" aria-label="タイムラプス録画開始" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="7"/><path d="M12 13V9M12 13l3 2M9 3h6"/></svg></button>
+    <button id="btn-stop-tl" class="tool-btn small" title="タイムラプス録画停止" aria-label="タイムラプス録画停止" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1"/></svg></button>
     <span id="tl-timer" class="rec-timer">00:00</span>
 
     <div class="tool-group-sep"></div>
 
-    <button id="btn-zoom-select" class="tool-btn small" title="ズーム領域を選択">🔍</button>
-    <button id="btn-zoom-reset" class="tool-btn small" title="ズーム解除">🔁</button>
+    <button id="btn-zoom-select" class="tool-btn small" title="ズーム領域を選択" aria-label="ズーム領域を選択"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M15 15l5 5M8.5 10.5h4M10.5 8.5v4"/></svg></button>
+    <button id="btn-zoom-reset" class="tool-btn small" title="ズーム解除" aria-label="ズーム解除"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M15 15l5 5M8.5 10.5h4"/></svg></button>
+    <button id="btn-focus-lines" class="tool-btn small" title="ここ見て！集中線" aria-label="ここ見て！集中線"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M19.1 4.9l-2.8 2.8M7.7 16.3l-2.8 2.8"/></svg></button>
 
     <div class="tool-group-sep" style="width:8px;"></div>
 
-    <button id="video-settings-toggle" class="tool-btn small" title="映像設定の表示/非表示">🎚</button>
+    <button id="video-settings-toggle" class="tool-btn small" title="映像設定の表示/非表示" aria-label="映像設定"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h6M14 7h6M4 17h10M18 17h2M10 4v6M14 14v6"/></svg></button>
   </div>
 
   <div id="pen-config-0" class="floating-panel">
@@ -410,7 +422,8 @@
     </div>
   </div>
 
-  <div id="zoom-hint">ズームしたい範囲をドラッグ（指／ペン／マウス）</div>
+  <div id="zoom-hint">ズームしたい範囲を四角くドラッグ</div>
+  <div id="focus-hint">ここ見て！ 円の中心から外へドラッグして範囲を指定</div>
 
   <div id="qr-overlay">
     <div id="qr-box">
@@ -426,8 +439,10 @@
   const video = document.getElementById('video');
   const drawCanvas = document.getElementById('draw-layer');
   const uiCanvas = document.getElementById('ui-layer');
+  const focusCanvas = document.getElementById('focus-layer');
   const drawCtx = drawCanvas.getContext('2d', { willReadFrequently: true });
   const uiCtx = uiCanvas.getContext('2d');
+  const focusCtx = focusCanvas.getContext('2d');
 
   const cameraWrapper = document.getElementById('camera-wrapper');
   const cameraInner = document.getElementById('camera-inner');
@@ -444,6 +459,7 @@
   const btnShot = document.getElementById('btn-shot');
   const btnZoomSelect = document.getElementById('btn-zoom-select');
   const btnZoomReset = document.getElementById('btn-zoom-reset');
+  const btnFocusLines = document.getElementById('btn-focus-lines');
   const videoSettingsToggle = document.getElementById('video-settings-toggle');
   const videoPanel = document.getElementById('video-panel');
 
@@ -491,6 +507,7 @@
   const logPanel = document.getElementById('log-panel');
   const logToggle = document.getElementById('log-toggle');
   const zoomHint = document.getElementById('zoom-hint');
+  const focusHint = document.getElementById('focus-hint');
 
   // QR
   const qrButton = document.getElementById('qr-button');
@@ -521,9 +538,12 @@
   let isFrozen = false;
   const freezeCanvas = document.createElement('canvas');
   const freezeCtx = freezeCanvas.getContext('2d');
+  const ICON_PAUSE = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7v10M15 7v10"/></svg>';
+  const ICON_PLAY  = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7l8 5-8 5z"/></svg>';
   function setFrozenUI(){
-    btnFreeze.textContent = isFrozen ? '▶️' : '⏸';
+    btnFreeze.innerHTML = isFrozen ? ICON_PLAY : ICON_PAUSE;
     btnFreeze.title = isFrozen ? '再開（解除）' : '一時停止（フリーズ）';
+    btnFreeze.setAttribute('aria-label', isFrozen ? '再開' : '一時停止');
     // when frozen, disable starting new record/tl (avoid confusion)
     btnStartRec.disabled = !cameraStream || isFrozen;
     btnStartTl.disabled  = !cameraStream || isFrozen;
@@ -656,6 +676,18 @@
   let zoomDragStart = null;
   let lastZoomPos = null;
 
+  // 「ここ見て！」集中線（画面座標ベース。ズーム後の見た目にもそのまま重なる）
+  let focusMode = false;
+  let focusDragStart = null;
+  let lastFocusPos = null;
+  let focusEffect = null;
+  let focusAnimRaf = null;
+  let focusRenderProgress = 1;
+  function cloneFocusEffect(e){
+    if(!e) return null;
+    return { ...e, lines: (e.lines||[]).map(l=>({...l})) };
+  }
+
   // 今のズーム変換
   let zoomTransform = { s:1, tx:0, ty:0 };
 
@@ -663,7 +695,7 @@
     if (!drawCanvas.width || !drawCanvas.height) return;
     try{
       const snapshot = drawCtx.getImageData(0,0,drawCanvas.width,drawCanvas.height);
-      undoStack.push({ img:snapshot, texts:cloneTextItems(textItems), selected:selectedTextId, zoomRect: zoomRect ? {...zoomRect} : null });
+      undoStack.push({ img:snapshot, texts:cloneTextItems(textItems), selected:selectedTextId, zoomRect: zoomRect ? {...zoomRect} : null, focusEffect: cloneFocusEffect(focusEffect) });
       if (undoStack.length > maxUndo) undoStack.shift();
       updateUndoButton();
     }catch(e){ console.error(e); }
@@ -676,10 +708,14 @@
       textItems = cloneTextItems(s.texts);
       selectedTextId = s.selected || null;
       zoomRect = s.zoomRect ? {...s.zoomRect} : null;
+      focusEffect = cloneFocusEffect(s.focusEffect);
+      focusRenderProgress = 1;
+      cancelFocusAnimation();
       updateZoomTransform();
 
       hideTextEditor();
       uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height);
+      renderFocusEffect(1);
       renderTextLayer();
       log('1つ前の状態に戻しました');
     }catch(e){ console.error(e); }
@@ -695,7 +731,7 @@
     const height = rect.height;
     const dpr = window.devicePixelRatio || 1;
 
-    [drawCanvas, uiCanvas].forEach(c=>{
+    [drawCanvas, uiCanvas, focusCanvas].forEach(c=>{
       c.width = width*dpr;
       c.height = height*dpr;
       c.style.width = width+'px';
@@ -711,8 +747,12 @@
 
     drawCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
     uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height);
+    focusCtx.clearRect(0,0,focusCanvas.width,focusCanvas.height);
 
     zoomRect = null;
+    focusEffect = null;
+    focusRenderProgress = 1;
+    cancelFocusAnimation();
     updateZoomTransform();
 
     undoStack.length = 0;
@@ -811,6 +851,8 @@
   }
 
   function setToolMode(mode){
+    if(focusMode) exitFocusMode(true);
+    if(zoomMode) exitZoomMode();
     toolMode = mode;
     toolEraserBtn.classList.toggle('active', mode==='eraser');
     toolShapeBtn.classList.toggle('active', mode==='shape');
@@ -1270,7 +1312,7 @@
   }
 
   cameraWrapper.addEventListener('pointerdown', (e)=>{
-    if(zoomMode) return;
+    if(zoomMode || focusMode) return;
     const path = e.composedPath ? e.composedPath() : [];
     const hitText = path.some(p=> p && p.classList && p.classList.contains('text-box'));
     const hitEditor = path.some(p=> p && p.id==='text-editor-ta');
@@ -1309,7 +1351,7 @@
   }, { passive: false });
 
   function startDraw(e){
-    if(zoomMode) return;
+    if(zoomMode || focusMode) return;
     if(toolMode==='text') return;
     e.preventDefault();
     pushUndo();
@@ -1328,7 +1370,7 @@
   }
 
   function draw(e){
-    if(!isDrawing || zoomMode) return;
+    if(!isDrawing || zoomMode || focusMode) return;
     e.preventDefault();
     const pos = getCanvasPosInternal(e);
 
@@ -1405,7 +1447,11 @@
     pushUndo();
     drawCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
     uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height);
-    log('手描きレイヤーをクリアしました（テキストは残ります）');
+    focusEffect = null;
+    focusRenderProgress = 1;
+    cancelFocusAnimation();
+    focusCtx.clearRect(0,0,focusCanvas.width,focusCanvas.height);
+    log('描画と集中線をクリアしました（テキストは残ります）');
   });
 
   function clearUiCanvas(){ uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height); }
@@ -1434,7 +1480,9 @@
   }
 
   function enterZoomMode(){
+    if(focusMode) exitFocusMode();
     zoomMode = true;
+    btnZoomSelect.classList.add('active');
     zoomDragStart=null; lastZoomPos=null;
     clearUiCanvas();
     zoomHint.classList.add('visible');
@@ -1445,6 +1493,7 @@
   }
   function exitZoomMode(){
     zoomMode = false;
+    btnZoomSelect.classList.remove('active');
     zoomDragStart=null; lastZoomPos=null;
     clearUiCanvas();
     zoomHint.classList.remove('visible');
@@ -1536,6 +1585,195 @@
     finalizeZoom(pos);
   }, {capture:true});
 
+  // ===== 「ここ見て！」漫画集中線 =====
+  function cancelFocusAnimation(){
+    if(focusAnimRaf) cancelAnimationFrame(focusAnimRaf);
+    focusAnimRaf = null;
+  }
+
+  function clearFocusCanvas(){
+    focusCtx.setTransform(1,0,0,1,0,0);
+    focusCtx.clearRect(0,0,focusCanvas.width,focusCanvas.height);
+  }
+
+  function rayToRectDistance(cx,cy,dx,dy,W,H){
+    const tx = dx > 0 ? (W-cx)/dx : (dx < 0 ? (0-cx)/dx : Infinity);
+    const ty = dy > 0 ? (H-cy)/dy : (dy < 0 ? (0-cy)/dy : Infinity);
+    const vals = [tx,ty].filter(v=>Number.isFinite(v) && v>0);
+    return vals.length ? Math.min(...vals) : Math.max(W,H);
+  }
+
+  function makeFocusEffect(cx,cy,r,W,H){
+    const count = Math.max(64, Math.min(112, Math.round((W+H)/15)));
+    const lines=[];
+    for(let i=0;i<count;i++){
+      const jitter=(Math.random()-.5)*(Math.PI*2/count)*.72;
+      const a=(i/count)*Math.PI*2+jitter;
+      const dx=Math.cos(a), dy=Math.sin(a);
+      const edge=rayToRectDistance(cx,cy,dx,dy,W,H);
+      const outer=edge*(0.90 + Math.random()*0.10);
+      const inner=r*(1.02 + Math.random()*0.30);
+      if(outer <= inner+8) continue;
+      lines.push({
+        a, outer, inner,
+        width:0.8 + Math.random()*2.0,
+        alpha:0.52 + Math.random()*0.42,
+        delay:Math.random()*0.22
+      });
+    }
+    return {cx,cy,r,W,H,lines};
+  }
+
+  function drawFocusEffectTo(ctx, effect, progress=1, targetW=null, targetH=null){
+    if(!effect || !effect.lines) return;
+    const W=targetW || effect.W, H=targetH || effect.H;
+    const sx=W/effect.W, sy=H/effect.H;
+    ctx.save();
+    ctx.scale(sx,sy);
+    const ease=t=>1-Math.pow(1-t,3);
+    for(const line of effect.lines){
+      const local=Math.max(0,Math.min(1,(progress-line.delay)/(1-line.delay)));
+      if(local<=0) continue;
+      const p=ease(local);
+      const dx=Math.cos(line.a), dy=Math.sin(line.a);
+      const d0=line.outer;
+      const d1=line.outer + (line.inner-line.outer)*p;
+      const x0=effect.cx+dx*d0, y0=effect.cy+dy*d0;
+      const x1=effect.cx+dx*d1, y1=effect.cy+dy*d1;
+
+      // 白い細い縁取り＋黒線で、明暗どちらの映像でも見失いにくくする
+      ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1);
+      ctx.strokeStyle=`rgba(255,255,255,${Math.min(.82,line.alpha)})`;
+      ctx.lineWidth=line.width+2.2; ctx.lineCap='round'; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1);
+      ctx.strokeStyle=`rgba(0,0,0,${line.alpha})`;
+      ctx.lineWidth=line.width; ctx.lineCap='round'; ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function renderFocusEffect(progress=focusRenderProgress){
+    clearFocusCanvas();
+    if(!focusEffect) return;
+    const rect=cameraWrapper.getBoundingClientRect();
+    const dpr=window.devicePixelRatio||1;
+    focusCtx.setTransform(dpr,0,0,dpr,0,0);
+    drawFocusEffectTo(focusCtx, focusEffect, progress, rect.width, rect.height);
+  }
+
+  function animateFocusEffect(){
+    cancelFocusAnimation();
+    const start=performance.now();
+    const duration=430;
+    const frame=(now)=>{
+      const p=Math.max(0,Math.min(1,(now-start)/duration));
+      focusRenderProgress = p;
+      renderFocusEffect(p);
+      if(p<1) focusAnimRaf=requestAnimationFrame(frame);
+      else { focusRenderProgress = 1; focusAnimRaf=null; }
+    };
+    focusAnimRaf=requestAnimationFrame(frame);
+  }
+
+  function drawFocusSelectionPreview(currentPos){
+    clearFocusCanvas();
+    if(!focusDragStart) return;
+    const rect=cameraWrapper.getBoundingClientRect();
+    const dpr=window.devicePixelRatio||1;
+    const dx=currentPos.x-focusDragStart.x, dy=currentPos.y-focusDragStart.y;
+    const r=Math.hypot(dx,dy);
+    focusCtx.setTransform(dpr,0,0,dpr,0,0);
+    focusCtx.save();
+    focusCtx.strokeStyle='#7dd3fc';
+    focusCtx.lineWidth=2;
+    focusCtx.setLineDash([7,5]);
+    focusCtx.beginPath();
+    focusCtx.arc(focusDragStart.x,focusDragStart.y,r,0,Math.PI*2);
+    focusCtx.stroke();
+    focusCtx.setLineDash([]);
+    focusCtx.fillStyle='rgba(125,211,252,.10)';
+    focusCtx.fill();
+    focusCtx.restore();
+  }
+
+  function enterFocusMode(){
+    if(zoomMode) exitZoomMode();
+    focusMode=true;
+    focusDragStart=null; lastFocusPos=null;
+    cancelFocusAnimation();
+    focusRenderProgress = 1;
+    clearFocusCanvas();
+    if(focusEffect) renderFocusEffect(1);
+    focusHint.classList.add('visible');
+    btnFocusLines.classList.add('active');
+    drawCanvas.style.pointerEvents='none';
+    textLayer.style.pointerEvents='none';
+    hideTextEditor();
+    log('ここ見て！：中心から外へドラッグして円形範囲を指定してください');
+  }
+
+  function exitFocusMode(restoreEffect=true){
+    focusMode=false;
+    focusDragStart=null; lastFocusPos=null;
+    focusHint.classList.remove('visible');
+    btnFocusLines.classList.remove('active');
+    drawCanvas.style.pointerEvents=(toolMode==='text')?'none':'auto';
+    textLayer.style.pointerEvents=(toolMode==='text')?'auto':'none';
+    if(restoreEffect){ focusRenderProgress = 1; renderFocusEffect(1); }
+  }
+
+  function finalizeFocus(endPos){
+    if(!focusDragStart || !endPos){ exitFocusMode(true); return; }
+    const dx=endPos.x-focusDragStart.x, dy=endPos.y-focusDragStart.y;
+    const r=Math.hypot(dx,dy);
+    if(r<20){
+      log('集中線の円が小さすぎます');
+      exitFocusMode(true);
+      return;
+    }
+    const W=cameraWrapper.clientWidth, H=cameraWrapper.clientHeight;
+    const maxR=Math.max(20,Math.min( Math.hypot(focusDragStart.x,focusDragStart.y), Math.hypot(W-focusDragStart.x,focusDragStart.y), Math.hypot(focusDragStart.x,H-focusDragStart.y), Math.hypot(W-focusDragStart.x,H-focusDragStart.y) ));
+    pushUndo();
+    focusEffect=makeFocusEffect(focusDragStart.x,focusDragStart.y,Math.min(r,maxR*.86),W,H);
+    focusRenderProgress = 0;
+    exitFocusMode(false);
+    animateFocusEffect();
+    log('集中線を追加しました');
+  }
+
+  btnFocusLines.addEventListener('click', ()=>{
+    if(focusMode){ exitFocusMode(true); return; }
+    enterFocusMode();
+  });
+
+  cameraWrapper.addEventListener('pointerdown',(e)=>{
+    if(!focusMode) return;
+    e.preventDefault();
+    const pos=getWrapperPosFromClient(e.clientX,e.clientY);
+    focusDragStart=pos; lastFocusPos=pos;
+    drawFocusSelectionPreview(pos);
+  },{capture:true});
+
+  cameraWrapper.addEventListener('pointermove',(e)=>{
+    if(!focusMode || !focusDragStart) return;
+    e.preventDefault();
+    const pos=getWrapperPosFromClient(e.clientX,e.clientY);
+    lastFocusPos=pos;
+    drawFocusSelectionPreview(pos);
+  },{capture:true});
+
+  cameraWrapper.addEventListener('pointerup',(e)=>{
+    if(!focusMode || !focusDragStart) return;
+    e.preventDefault();
+    const pos=getWrapperPosFromClient(e.clientX,e.clientY);
+    lastFocusPos=pos;
+    finalizeFocus(pos);
+  },{capture:true});
+
+  cameraWrapper.addEventListener('pointercancel',()=>{
+    if(focusMode) exitFocusMode(true);
+  },{capture:true});
+
   // ===== 静止画/録画共通の合成描画 =====
   const compositeCanvas = document.createElement('canvas');
   const compositeCtx = compositeCanvas.getContext('2d');
@@ -1599,9 +1837,13 @@
     ctx.drawImage(video,0,0,vw,vh);
     ctx.restore();
 
-    // draw drawing layer and texts
+    // draw drawing layer and texts (camera-inner座標＝ズーム追従)
     ctx.drawImage(drawCanvas, 0,0,drawCanvas.width,drawCanvas.height, 0,0, Wcss,Hcss);
     drawTextItemsOnComposite(ctx);
+
+    // 集中線は画面座標で重ねる（ズーム後の注目位置をそのまま指せる）
+    ctx.setTransform(dprScale,0,0,dprScale,0,0);
+    drawFocusEffectTo(ctx, focusEffect, focusRenderProgress, Wcss, Hcss);
   }
 
   function drawCompositeFrame(){
@@ -1945,7 +2187,7 @@
   textLayer.style.pointerEvents = 'none';
 
   // ===== 初期ログ =====
-  log('起動しました。カメラ開始→描画/テキストが使えます。');
+  log('起動しました。カメラ開始→描画/テキスト/ズーム/集中線が使えます。');
 </script>
 </body>
 </html>
