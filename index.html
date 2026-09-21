@@ -2757,6 +2757,16 @@
   const compositeCanvas = document.createElement('canvas');
   const compositeCtx = compositeCanvas.getContext('2d');
 
+  function drawShapeItemsOnComposite(ctx){
+    for(const s of shapeItems){
+      if(!s) continue;
+      ctx.save();
+      ctx.translate(Number(s.x)||0, Number(s.y)||0);
+      drawShapeLocal(ctx, s, Math.max(24, Number(s.w)||24), Math.max(24, Number(s.h)||24));
+      ctx.restore();
+    }
+  }
+
   function drawTextItemsOnComposite(ctx){
     for(const t of textItems){
       const txt = (t.text||'').trimEnd();
@@ -2798,7 +2808,9 @@
     ctx.scale(s,s);
 
     const vw=video.videoWidth, vh=video.videoHeight;
-    if(!vw || !vh) return;
+    if(!vw || !vh || video.readyState < 2){
+      return false;
+    }
     const s0=Math.max(Wcss/vw, Hcss/vh);
     const vsW=vw*s0, vsH=vh*s0;
     const dx=(Wcss-vsW)/2, dy=(Hcss-vsH)/2;
@@ -2824,6 +2836,8 @@
     // 集中線は画面座標で重ねる（ズーム後の注目位置をそのまま指せる）
     ctx.setTransform(dprScale,0,0,dprScale,0,0);
     drawFocusEffectTo(ctx, focusEffect, focusRenderProgress, Wcss, Hcss, focusOpacity, focusRetract);
+    ctx.setTransform(1,0,0,1,0,0);
+    return true;
   }
 
   function drawCompositeFrame(){
@@ -2834,11 +2848,14 @@
     compositeCanvas.width  = Math.floor(Wcss*dpr);
     compositeCanvas.height = Math.floor(Hcss*dpr);
 
-    drawCompositeFrameTo(compositeCtx, Wcss, Hcss, dpr);
+    return drawCompositeFrameTo(compositeCtx, Wcss, Hcss, dpr);
   }
 
   btnShot.addEventListener('click', ()=>{
-    drawCompositeFrame();
+    if(!drawCompositeFrame()){
+      log('映像フレームを取得できませんでした。カメラ映像が表示されてから再度お試しください');
+      return;
+    }
     const url = compositeCanvas.toDataURL('image/png');
     const a=document.createElement('a');
     const ts=new Date().toISOString().replace(/[:.]/g,'-');
@@ -2890,41 +2907,44 @@
 
   // draw loop for recording at desired fps
   let recDrawRaf = null;
+  let recLastErrorLogged = false;
+  function prepareCompositeCanvas(){
+    const rect = cameraWrapper.getBoundingClientRect();
+    const Wcss = Math.max(2, rect.width);
+    const Hcss = Math.max(2, rect.height);
+    const dpr = window.devicePixelRatio || 1;
+    const pixelW = Math.max(2, Math.floor(Wcss*dpr));
+    const pixelH = Math.max(2, Math.floor(Hcss*dpr));
+    if(compositeCanvas.width !== pixelW) compositeCanvas.width = pixelW;
+    if(compositeCanvas.height !== pixelH) compositeCanvas.height = pixelH;
+    return {Wcss,Hcss,dpr};
+  }
+  function renderCompositeNow(){
+    const {Wcss,Hcss,dpr}=prepareCompositeCanvas();
+    return drawCompositeFrameTo(compositeCtx, Wcss, Hcss, dpr);
+  }
   function startCompositeDrawLoop(targetFps){
     const fps = Math.max(1, Math.min(60, targetFps||30));
     const frameMs = 1000 / fps;
-    let last = 0;
-
-    const rect = cameraWrapper.getBoundingClientRect();
-    const Wcss = rect.width, Hcss = rect.height;
-    const dpr = window.devicePixelRatio || 1;
-    compositeCanvas.width  = Math.floor(Wcss*dpr);
-    compositeCanvas.height = Math.floor(Hcss*dpr);
+    let last = -Infinity;
+    recLastErrorLogged = false;
 
     function loop(ts){
       if(!isRecording) return;
-      if(ts - last >= frameMs){
-        last = ts;
-        // If frozen, keep drawing last frame: composite still uses video current but video is hidden/paused.
-        // So we reuse freezeFrame by drawing from freezeCanvas if frozen.
-        if(isFrozen){
-          // draw freezeCanvas as background
-          compositeCtx.setTransform(1,0,0,1,0,0);
-          compositeCtx.drawImage(freezeCanvas, 0,0, compositeCanvas.width, compositeCanvas.height);
-          // then overlay draw/text with zoom transform (freeze is already zoomed, so we overlay in screen space)
-          const W = Wcss, H = Hcss;
-          compositeCtx.save();
-          compositeCtx.scale(dpr,dpr);
-          // overlay draw and text in current zoomed space
-          // easiest: redraw overlays by calling drawCompositeFrameTo but background replaced; so:
-          compositeCtx.restore();
-          // Just call full draw for overlays using video (will be stale) => instead: do complete drawCompositeFrameTo using video won't work.
-          // Simpler: while frozen, do not allow recording start; already disabled. So this block shouldn't happen.
-        }else{
-          drawCompositeFrameTo(compositeCtx, Wcss, Hcss, dpr);
+      try{
+        if(ts - last >= frameMs){
+          last = ts;
+          if(!isFrozen) renderCompositeNow();
         }
+      }catch(err){
+        console.error('録画フレーム描画エラー:', err);
+        if(!recLastErrorLogged){
+          recLastErrorLogged=true;
+          log('録画フレームの描画でエラーが発生しました');
+        }
+      }finally{
+        if(isRecording) recDrawRaf = requestAnimationFrame(loop);
       }
-      recDrawRaf = requestAnimationFrame(loop);
     }
     recDrawRaf = requestAnimationFrame(loop);
   }
@@ -2938,14 +2958,31 @@
     if(isFrozen){ log('一時停止中は録画できません'); return; }
     if(isRecording){ return; }
     if(isTlRecording){ log('TL録画中は動画録画できません'); return; }
+    if(!video.videoWidth || !video.videoHeight || video.readyState < 2){
+      log('カメラ映像の準備が完了していません。少し待ってから録画してください');
+      return;
+    }
 
-    // prepare composite canvas and stream
-    const targetFps = Number(videoFpsInput.value)||30;
-    startCompositeDrawLoop(targetFps);
+    const targetFps = Math.max(1, Math.min(60, Number(videoFpsInput.value)||30));
 
-    const stream = compositeCanvas.captureStream(Math.max(1, Math.min(60, targetFps)));
+    // captureStream開始前に必ず1枚描き、黒い初期フレームだけが記録されるのを防ぐ。
+    try{
+      if(!renderCompositeNow()){
+        log('録画用フレームを生成できませんでした');
+        return;
+      }
+    }catch(err){
+      console.error(err);
+      log('録画用フレームの生成に失敗しました');
+      return;
+    }
 
-    // add audio if enabled
+    const stream = compositeCanvas.captureStream(targetFps);
+    const canvasVideoTrack = stream.getVideoTracks()[0] || null;
+    if(canvasVideoTrack && typeof canvasVideoTrack.requestFrame === 'function'){
+      try{ canvasVideoTrack.requestFrame(); }catch(_e){}
+    }
+
     if(audioEnabled && cameraStream.getAudioTracks().length){
       cameraStream.getAudioTracks().forEach(track=>{
         try{ stream.addTrack(track); }catch(e){}
@@ -2955,31 +2992,54 @@
     const mimeType = pickSupportedMime();
     recordChunks = [];
     try{
-      recorder = new MediaRecorder(stream, mimeType? { mimeType } : undefined);
+      recorder = new MediaRecorder(stream, {
+        ...(mimeType ? { mimeType } : {}),
+        videoBitsPerSecond: 6_000_000
+      });
     }catch(e){
       console.error(e);
-      log('録画開始に失敗しました（MediaRecorderが利用できない可能性）');
-      stopCompositeDrawLoop();
-      return;
+      try{ recorder = new MediaRecorder(stream, mimeType? { mimeType } : undefined); }catch(e2){
+        console.error(e2);
+        log('録画開始に失敗しました（MediaRecorderが利用できない可能性）');
+        stream.getTracks().forEach(t=>t.stop());
+        return;
+      }
     }
 
     recorder.ondataavailable = (e)=>{
       if(e.data && e.data.size>0) recordChunks.push(e.data);
     };
+    recorder.onerror = (e)=>{
+      console.error('MediaRecorder error:', e);
+      log('動画録画中にエラーが発生しました');
+    };
     recorder.onstop = ()=>{
       stopCompositeDrawLoop();
       stopRecTimer();
+      stream.getTracks().forEach(t=>{
+        // 元のカメラ/マイクtrackはcloneしていないため、追加したaudioは停止しない。
+        if(t.kind==='video') try{ t.stop(); }catch(_e){}
+      });
 
-      const blob = new Blob(recordChunks, { type: recorder.mimeType || 'video/webm' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const ts=new Date().toISOString().replace(/[:.]/g,'-');
-      a.href = url;
-      a.download = `record_${ts}.webm`;
-      a.click();
-      setTimeout(()=>URL.revokeObjectURL(url), 30000);
-
-      log('動画を保存しました（WebM）');
+      if(!recordChunks.length){
+        log('動画データを生成できませんでした');
+      }else{
+        const blob = new Blob(recordChunks, { type: recorder.mimeType || 'video/webm' });
+        if(blob.size>0){
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          const ts=new Date().toISOString().replace(/[:.]/g,'-');
+          a.href = url;
+          a.download = `record_${ts}.webm`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(()=>URL.revokeObjectURL(url), 60000);
+          log(`動画を保存しました（WebM / ${(blob.size/1024/1024).toFixed(1)} MB）`);
+        }else{
+          log('生成された動画ファイルが空でした');
+        }
+      }
       recordChunks = [];
       recorder = null;
       isRecording = false;
@@ -2988,8 +3048,26 @@
       btnStopRec.disabled = true;
     };
 
-    recorder.start(200); // timeslice
+    // 描画ループは isRecording=true の後に開始する。
     isRecording = true;
+    try{
+      recorder.start(250);
+      startCompositeDrawLoop(targetFps);
+      // 録画開始直後にももう一度確実に描く。
+      renderCompositeNow();
+      if(canvasVideoTrack && typeof canvasVideoTrack.requestFrame === 'function'){
+        try{ canvasVideoTrack.requestFrame(); }catch(_e){}
+      }
+    }catch(e){
+      console.error(e);
+      isRecording=false;
+      stopCompositeDrawLoop();
+      stream.getVideoTracks().forEach(t=>{ try{t.stop();}catch(_e){} });
+      recorder=null;
+      log('動画録画を開始できませんでした');
+      return;
+    }
+
     startRecTimer();
     btnStartRec.disabled = true;
     btnStopRec.disabled = false;
@@ -3029,11 +3107,15 @@
   }
 
   function frameToBlob(){
-    // capture composite PNG
-    drawCompositeFrame();
-    return new Promise((resolve)=>{
-      compositeCanvas.toBlob((b)=>resolve(b), 'image/png');
-    });
+    try{
+      if(!drawCompositeFrame()) return Promise.resolve(null);
+      return new Promise((resolve)=>{
+        compositeCanvas.toBlob((b)=>resolve(b), 'image/png');
+      });
+    }catch(err){
+      console.error('TLフレーム取得エラー:', err);
+      return Promise.resolve(null);
+    }
   }
 
   async function startTimelapse(){
@@ -3079,82 +3161,100 @@
       return;
     }
 
-    // Encode as WebM using MediaRecorder from canvas stream replay.
-    // Approach: draw each stored image to temp canvas at fps, record.
+    log(`TL保存処理中：${tlFrames.length}フレーム`);
+
     const fps = Math.max(1, Math.min(60, Number(tlFpsInput.value)||10));
     const tmp = document.createElement('canvas');
     const tctx = tmp.getContext('2d');
-    const rect = cameraWrapper.getBoundingClientRect();
-    const W = Math.max(2, Math.floor(rect.width));
-    const H = Math.max(2, Math.floor(rect.height));
+
+    // 保存画像と同じ縦横比・解像度を使う。
+    const firstUrl = URL.createObjectURL(tlFrames[0]);
+    const firstImg = new Image();
+    firstImg.src = firstUrl;
+    try{ await firstImg.decode(); }catch(_e){}
+    const W = Math.max(2, firstImg.naturalWidth || compositeCanvas.width || 640);
+    const H = Math.max(2, firstImg.naturalHeight || compositeCanvas.height || 480);
     tmp.width = W;
     tmp.height = H;
+    tctx.fillStyle='black';
+    tctx.fillRect(0,0,W,H);
+    if(firstImg.naturalWidth) tctx.drawImage(firstImg,0,0,W,H);
 
-    const stream = tmp.captureStream(fps);
+    const stream = tmp.captureStream(0);
+    const videoTrack = stream.getVideoTracks()[0] || null;
     const mimeType = pickSupportedMime();
-
     let tlRec;
     let chunks=[];
     try{
-      tlRec = new MediaRecorder(stream, mimeType? { mimeType } : undefined);
+      tlRec = new MediaRecorder(stream, {
+        ...(mimeType ? { mimeType } : {}),
+        videoBitsPerSecond: 6_000_000
+      });
     }catch(e){
       console.error(e);
-      log('TL保存に失敗しました（MediaRecorder利用不可）');
-      return;
+      try{ tlRec = new MediaRecorder(stream, mimeType? { mimeType } : undefined); }catch(e2){
+        console.error(e2);
+        URL.revokeObjectURL(firstUrl);
+        log('TL保存に失敗しました（MediaRecorder利用不可）');
+        return;
+      }
     }
 
     tlRec.ondataavailable = (e)=>{ if(e.data && e.data.size>0) chunks.push(e.data); };
-    const stopped = new Promise((resolve)=> tlRec.onstop = resolve);
-    tlRec.start(200);
+    const stopped = new Promise((resolve)=>{ tlRec.onstop = resolve; });
+    tlRec.start(250);
 
-    // play back frames at fps
-    let idx=0;
     const frameDur = 1000/fps;
+    const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
-    const imgs = [];
-    for(const b of tlFrames){
-      const url = URL.createObjectURL(b);
-      const img = new Image();
-      img.src = url;
-      await img.decode().catch(()=>{});
-      imgs.push({img,url});
+    // 最初のフレームを明示的に送る。
+    if(videoTrack && typeof videoTrack.requestFrame==='function'){
+      try{ videoTrack.requestFrame(); }catch(_e){}
+    }
+    await sleep(frameDur);
+    URL.revokeObjectURL(firstUrl);
+
+    for(let i=1;i<tlFrames.length;i++){
+      const url=URL.createObjectURL(tlFrames[i]);
+      const img=new Image();
+      img.src=url;
+      try{ await img.decode(); }catch(_e){}
+      tctx.setTransform(1,0,0,1,0,0);
+      tctx.fillStyle='black';
+      tctx.fillRect(0,0,W,H);
+      if(img.naturalWidth) tctx.drawImage(img,0,0,W,H);
+      if(videoTrack && typeof videoTrack.requestFrame==='function'){
+        try{ videoTrack.requestFrame(); }catch(_e){}
+      }
+      await sleep(frameDur);
+      URL.revokeObjectURL(url);
     }
 
-    await new Promise((resolve)=>{
-      const timer = setInterval(()=>{
-        if(idx >= imgs.length){
-          clearInterval(timer);
-          resolve();
-          return;
-        }
-        const {img} = imgs[idx];
-        tctx.setTransform(1,0,0,1,0,0);
-        tctx.clearRect(0,0,W,H);
-        // fill black
-        tctx.fillStyle='black';
-        tctx.fillRect(0,0,W,H);
-        // draw image fit
-        tctx.drawImage(img,0,0,W,H);
-        idx++;
-      }, frameDur);
-    });
-
-    // stop
+    // 最終フレームがエンコーダへ渡る時間を確保。
+    await sleep(Math.max(100, frameDur));
+    try{ tlRec.requestData(); }catch(_e){}
+    await sleep(50);
     tlRec.stop();
     await stopped;
-
-    imgs.forEach(o=> URL.revokeObjectURL(o.url));
+    stream.getTracks().forEach(t=>{ try{t.stop();}catch(_e){} });
 
     const blob = new Blob(chunks, { type: tlRec.mimeType || 'video/webm' });
+    if(!blob.size){
+      log('TL動画データを生成できませんでした');
+      tlFrames=[];
+      return;
+    }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     const ts=new Date().toISOString().replace(/[:.]/g,'-');
     a.href = url;
     a.download = `timelapse_${ts}.webm`;
+    document.body.appendChild(a);
     a.click();
-    setTimeout(()=>URL.revokeObjectURL(url), 30000);
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
 
-    log('タイムラプスを保存しました（WebM）');
+    log(`タイムラプスを保存しました（${tlFrames.length}フレーム / ${(blob.size/1024/1024).toFixed(1)} MB）`);
     tlFrames = [];
   }
 
