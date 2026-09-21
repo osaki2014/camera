@@ -971,6 +971,13 @@
   // 今のズーム変換
   let zoomTransform = { s:1, tx:0, ty:0 };
 
+  // DOMイベントはスクリプト初期化中にも発火し得るため、
+  // テキスト・図形の状態は参照される関数より先に初期化する。
+  let textItems = [];
+  let selectedTextId = null;
+  let shapeItems = [];
+  let selectedShapeId = null;
+
   function makeDrawSnapshot(){
     const c = document.createElement('canvas');
     c.width = drawCanvas.width;
@@ -1060,7 +1067,7 @@
 
   window.addEventListener('resize', ()=>{
     if (video.videoWidth) resizeCanvases();
-    if (textEditor.style.display !== 'none') positionEditorToSelected();
+    if (textEditor.style.display === 'block' && selectedTextId) positionEditorToSelected();
   });
 
   // ===== ツール =====
@@ -1333,8 +1340,6 @@
 
   // ===== テキスト =====
   let textDefaults = { color:'#ffffff', size:36, font:'system-ui, -apple-system, BlinkMacSystemFont' };
-  let textItems = [];
-  let selectedTextId = null;
 
   let isDraggingText = false;
   let isResizingText = false;
@@ -1666,8 +1671,6 @@
   }, {capture:true});
 
   // ===== 図形 =====
-  let shapeItems = [];
-  let selectedShapeId = null;
   let isDraggingShape = false;
   let isResizingShape = false;
   let activeShapePointerId = null;
@@ -2018,7 +2021,7 @@
 
   function flushStrokeQueue(){
     strokeRaf = 0;
-    if(!isDrawing || toolMode==='shape' || !strokeQueue.length) return;
+    if(!isDrawing || (toolMode!=='pen' && toolMode!=='eraser') || !strokeQueue.length) return;
     const pts = strokeQueue.splice(0, strokeQueue.length);
     configureStrokeStyle();
     drawCtx.beginPath();
@@ -2043,7 +2046,7 @@
 
   function startDraw(e){
     if(zoomMode || focusMode) return;
-    if(toolMode==='text') return;
+    if(toolMode!=='pen' && toolMode!=='eraser') return;
     e.preventDefault();
     refreshDrawMap();
     pushUndo();
