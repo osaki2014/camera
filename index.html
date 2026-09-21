@@ -252,6 +252,38 @@
       box-shadow:0 4px 18px rgba(0,0,0,.28);
     }
     #zoom-hint.visible,#focus-hint.visible{ display:block;}
+
+    /* ボタン説明：ブラウザ標準titleの待ち時間を使わず、即時表示 */
+    #quick-tooltip{
+      position:fixed; left:0; top:0; z-index:1000;
+      max-width:min(280px,82vw); box-sizing:border-box;
+      padding:6px 9px; border-radius:8px;
+      background:rgba(18,18,18,.94); color:#fff;
+      border:1px solid rgba(255,255,255,.22);
+      box-shadow:0 5px 18px rgba(0,0,0,.38);
+      font-size:12px; line-height:1.25; white-space:normal;
+      pointer-events:none; opacity:0; visibility:hidden;
+      transform:translateY(2px);
+      transition:opacity .06s ease, transform .06s ease, visibility 0s linear .06s;
+    }
+    #quick-tooltip.visible{
+      opacity:1; visibility:visible; transform:translateY(0);
+      transition-delay:0s;
+    }
+
+    #camera-status{
+      position:absolute; left:50%; top:14px; transform:translateX(-50%);
+      z-index:15; max-width:min(86vw,620px); box-sizing:border-box;
+      padding:8px 12px; border-radius:999px;
+      background:rgba(0,0,0,.78); color:#fff;
+      border:1px solid rgba(255,255,255,.22);
+      font-size:12px; line-height:1.35; text-align:center;
+      pointer-events:none; opacity:0; transition:opacity .18s ease;
+      backdrop-filter:blur(6px);
+    }
+    #camera-status.show{ opacity:1; }
+    #camera-status.error{ border-color:rgba(248,113,113,.85); }
+    #camera-status.ok{ border-color:rgba(74,222,128,.75); }
   </style>
 </head>
 <body>
@@ -297,6 +329,7 @@
     </div>
     <canvas id="focus-layer"></canvas>
     <div id="text-editor"><textarea id="text-editor-ta"></textarea></div>
+    <div id="camera-status" role="status" aria-live="polite"></div>
   </div>
 
   <div id="toolbar">
@@ -424,6 +457,7 @@
 
   <div id="zoom-hint">ズームしたい範囲を四角くドラッグ</div>
   <div id="focus-hint">ここ見て！ 円の中心から外へドラッグして範囲を指定</div>
+  <div id="quick-tooltip" role="tooltip"></div>
 
   <div id="qr-overlay">
     <div id="qr-box">
@@ -440,7 +474,7 @@
   const drawCanvas = document.getElementById('draw-layer');
   const uiCanvas = document.getElementById('ui-layer');
   const focusCanvas = document.getElementById('focus-layer');
-  const drawCtx = drawCanvas.getContext('2d', { willReadFrequently: true });
+  const drawCtx = drawCanvas.getContext('2d');
   const uiCtx = uiCanvas.getContext('2d');
   const focusCtx = focusCanvas.getContext('2d');
 
@@ -508,6 +542,25 @@
   const logToggle = document.getElementById('log-toggle');
   const zoomHint = document.getElementById('zoom-hint');
   const focusHint = document.getElementById('focus-hint');
+  const quickTooltip = document.getElementById('quick-tooltip');
+  const cameraStatus = document.getElementById('camera-status');
+  let cameraStatusTimer = null;
+  function showCameraStatus(message, type='info', autoHideMs=0){
+    if(!cameraStatus) return;
+    if(cameraStatusTimer){ clearTimeout(cameraStatusTimer); cameraStatusTimer=null; }
+    cameraStatus.textContent = message;
+    cameraStatus.classList.remove('error','ok');
+    if(type==='error') cameraStatus.classList.add('error');
+    if(type==='ok') cameraStatus.classList.add('ok');
+    cameraStatus.classList.add('show');
+    if(autoHideMs>0){
+      cameraStatusTimer=setTimeout(()=>cameraStatus.classList.remove('show'), autoHideMs);
+    }
+  }
+  function hideCameraStatus(){
+    if(cameraStatusTimer){ clearTimeout(cameraStatusTimer); cameraStatusTimer=null; }
+    if(cameraStatus) cameraStatus.classList.remove('show');
+  }
 
   // QR
   const qrButton = document.getElementById('qr-button');
@@ -522,6 +575,51 @@
   });
   qrClose.addEventListener('click', () => qrOverlay.classList.remove('open'));
   qrOverlay.addEventListener('click', (e) => { if (e.target === qrOverlay) qrOverlay.classList.remove('open'); });
+
+  // ===== ボタン説明（待ち時間なしの独自ツールチップ）=====
+  let tooltipAnchor = null;
+  function hideQuickTooltip(){
+    tooltipAnchor = null;
+    quickTooltip.classList.remove('visible');
+  }
+  function positionQuickTooltip(anchor){
+    if(!anchor || !quickTooltip.classList.contains('visible')) return;
+    const ar = anchor.getBoundingClientRect();
+    const tr = quickTooltip.getBoundingClientRect();
+    const margin = 8;
+    let left = ar.left + ar.width/2 - tr.width/2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - tr.width - margin));
+    let top = ar.top - tr.height - 8;
+    if(top < margin) top = ar.bottom + 8;
+    if(top + tr.height > window.innerHeight - margin) top = Math.max(margin, window.innerHeight-tr.height-margin);
+    quickTooltip.style.left = Math.round(left)+'px';
+    quickTooltip.style.top = Math.round(top)+'px';
+  }
+  function showQuickTooltip(anchor){
+    const text = anchor && anchor.dataset ? anchor.dataset.tooltip : '';
+    if(!text) return;
+    tooltipAnchor = anchor;
+    quickTooltip.textContent = text;
+    quickTooltip.classList.add('visible');
+    requestAnimationFrame(()=>positionQuickTooltip(anchor));
+  }
+  function initQuickTooltips(){
+    document.querySelectorAll('button[title]').forEach(btn=>{
+      const text = btn.getAttribute('title') || '';
+      if(!text) return;
+      btn.dataset.tooltip = text;
+      if(!btn.getAttribute('aria-label')) btn.setAttribute('aria-label', text);
+      // native title は表示まで時間がかかるので、独自tooltipへ置換
+      btn.removeAttribute('title');
+      btn.addEventListener('pointerenter', ()=>showQuickTooltip(btn));
+      btn.addEventListener('pointerleave', hideQuickTooltip);
+      btn.addEventListener('pointerdown', hideQuickTooltip, {passive:true});
+      btn.addEventListener('focus', ()=>showQuickTooltip(btn));
+      btn.addEventListener('blur', hideQuickTooltip);
+    });
+  }
+  initQuickTooltips();
+  window.addEventListener('resize', ()=>{ if(tooltipAnchor) positionQuickTooltip(tooltipAnchor); });
 
   function log(msg){
     const now = new Date();
@@ -573,6 +671,11 @@
 
   async function populateCameraList(){
     try{
+      if(!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices){
+        cameraSelect.innerHTML = '<option>カメラ一覧を取得できません</option>';
+        cameraSelect.disabled = true;
+        return;
+      }
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoDevices = devices.filter(d => d.kind === 'videoinput');
       cameraSelect.innerHTML = '';
@@ -583,58 +686,160 @@
         cameraSelect.appendChild(opt);
       });
       if (!currentVideoDeviceId && videoDevices[0]) currentVideoDeviceId = videoDevices[0].deviceId;
-      if (currentVideoDeviceId) cameraSelect.value = currentVideoDeviceId;
+      if (currentVideoDeviceId && videoDevices.some(d=>d.deviceId===currentVideoDeviceId)) {
+        cameraSelect.value = currentVideoDeviceId;
+      } else if (videoDevices[0]) {
+        currentVideoDeviceId = videoDevices[0].deviceId;
+        cameraSelect.value = currentVideoDeviceId;
+      }
       cameraSelect.disabled = videoDevices.length <= 1;
-    }catch(e){ console.log(e); }
+    }catch(e){
+      cameraSelect.disabled = true;
+      log(`カメラ一覧の取得に失敗: ${e?.name || 'Error'}`);
+    }
   }
 
   let audioEnabled = false;
   audioEnabledCheckbox.checked = false;
-  audioEnabledCheckbox.addEventListener('change', ()=>{
+  audioEnabledCheckbox.addEventListener('change', async ()=>{
     audioEnabled = audioEnabledCheckbox.checked;
     log(`音声録音: ${audioEnabled ? 'ON':'OFF'}`);
-    if (cameraStream) cameraStream.getAudioTracks().forEach(t => t.enabled = audioEnabled);
+    if (!cameraStream) return;
+
+    const audioTracks = cameraStream.getAudioTracks();
+    if(!audioEnabled){
+      audioTracks.forEach(t=>t.enabled=false);
+      return;
+    }
+    if(audioTracks.length){
+      audioTracks.forEach(t=>t.enabled=true);
+      return;
+    }
+
+    // カメラ開始時は音声OFFなので、ONにした時点でのみマイク権限を追加取得する
+    try{
+      showCameraStatus('マイクを追加しています…');
+      const micStream = await navigator.mediaDevices.getUserMedia({video:false,audio:{echoCancellation:true,noiseSuppression:true}});
+      const micTrack = micStream.getAudioTracks()[0];
+      if(micTrack){ cameraStream.addTrack(micTrack); }
+      showCameraStatus('マイク ON','ok',1400);
+    }catch(e){
+      audioEnabled=false;
+      audioEnabledCheckbox.checked=false;
+      showCameraStatus('マイクを利用できません。カメラ映像はそのまま使用できます。','error',3200);
+      log(`マイクを追加できませんでした: ${e?.name || 'Error'}`);
+    }
   });
 
+  function cameraErrorMessage(e){
+    const name = e?.name || 'Error';
+    if(name==='NotAllowedError' || name==='SecurityError'){
+      return 'カメラの利用が許可されていません。ブラウザのアドレスバー付近のカメラ権限を「許可」にしてください。';
+    }
+    if(name==='NotFoundError' || name==='DevicesNotFoundError'){
+      return '利用できるカメラが見つかりません。カメラの接続を確認してください。';
+    }
+    if(name==='NotReadableError' || name==='TrackStartError'){
+      return 'カメラを他のアプリが使用中の可能性があります。Zoom / Teams / カメラアプリ等を閉じて再度お試しください。';
+    }
+    if(name==='OverconstrainedError' || name==='ConstraintNotSatisfiedError'){
+      return '指定したカメラ設定では開始できませんでした。標準設定で再試行します。';
+    }
+    if(name==='AbortError') return 'カメラの開始が中断されました。もう一度カメラボタンを押してください。';
+    return `カメラを開始できませんでした（${name}）。`;
+  }
+
+  function makeVideoConstraints(deviceId=null){
+    const base = { width:{ ideal:1920 }, height:{ ideal:1080 }, frameRate:{ ideal:30 } };
+    return deviceId ? { ...base, deviceId:{ exact:deviceId } } : base;
+  }
+
+  async function requestCameraStream(deviceId=null, withAudio=false){
+    return navigator.mediaDevices.getUserMedia({
+      video: makeVideoConstraints(deviceId),
+      // ★重要：音声OFF時はマイク権限を要求しない
+      audio: withAudio ? { echoCancellation:true, noiseSuppression:true } : false
+    });
+  }
+
   async function initCamera(deviceId=null){
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      const msg = window.isSecureContext
+        ? 'このブラウザではカメラAPIを利用できません。Chrome / Edge / Safariの最新版で開いてください。'
+        : 'カメラはHTTPS上でのみ利用できます。GitHub Pages（https://...）から開いてください。';
+      showCameraStatus(msg,'error');
+      log(msg);
+      return;
+    }
+
+    const previousStream = cameraStream;
+    btnStartCamera.disabled = true;
+    showCameraStatus('カメラに接続しています…');
+
+    let stream = null;
+    let usedDeviceId = deviceId;
     try{
-      if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
-      const constraints = {
-        video: deviceId
-          ? { deviceId:{ exact:deviceId }, width:{ ideal:1920 }, height:{ ideal:1080 } }
-          : { width:{ ideal:1920 }, height:{ ideal:1080 } },
-        audio: true
-      };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      try{
+        stream = await requestCameraStream(deviceId, audioEnabled);
+      }catch(firstError){
+        // 保存済み/選択済みdeviceIdが無効なら、既定カメラで自動再試行
+        if(deviceId && ['OverconstrainedError','ConstraintNotSatisfiedError','NotFoundError','DevicesNotFoundError'].includes(firstError?.name)){
+          usedDeviceId = null;
+          currentVideoDeviceId = null;
+          log('選択カメラを開けなかったため、既定カメラで再試行します');
+          stream = await requestCameraStream(null, audioEnabled);
+        }else if(audioEnabled && ['NotAllowedError','NotFoundError','DevicesNotFoundError','NotReadableError','TrackStartError'].includes(firstError?.name)){
+          // マイクだけが原因でもカメラ全体を失敗させない
+          audioEnabled = false;
+          audioEnabledCheckbox.checked = false;
+          log('マイクを利用できないため、音声なしでカメラを開始します');
+          stream = await requestCameraStream(deviceId, false);
+        }else{
+          throw firstError;
+        }
+      }
+
+      // 新しいstreamが確保できてから旧streamを停止する
+      if(previousStream && previousStream !== stream){
+        previousStream.getTracks().forEach(t=>t.stop());
+      }
       cameraStream = stream;
       hasInitializedCamera = true;
       cameraStream.getAudioTracks().forEach(t=> t.enabled = audioEnabled);
       video.srcObject = cameraStream;
 
-      // ensure play
-      try{ await video.play(); }catch(e){}
-
-      log(deviceId ? 'カメラを切り替えました':'カメラを開始しました');
-
-      const enableAfterReady = ()=>{
-        resizeCanvases();
-        btnShot.disabled = false;
-        btnFreeze.disabled = false;
-        btnStartRec.disabled = false;
-        btnStartTl.disabled = false;
-      };
-      if (video.readyState >= 1) {
-        enableAfterReady();
-      } else {
-        video.addEventListener('loadedmetadata', enableAfterReady, { once:true });
+      // metadataを待ってから再生。Safari/iPadでも安定しやすい
+      if(video.readyState < 1){
+        await new Promise(resolve=>{
+          const done=()=>resolve();
+          video.addEventListener('loadedmetadata', done, {once:true});
+          setTimeout(done, 1800);
+        });
+      }
+      try{ await video.play(); }catch(playErr){
+        // srcObject自体が取得できていれば、ユーザー操作後に再生可能
+        log(`映像再生待機: ${playErr?.name || 'play error'}`);
       }
 
+      resizeCanvases();
+      btnShot.disabled = false;
+      btnFreeze.disabled = false;
+      btnStartRec.disabled = false;
+      btnStartTl.disabled = false;
       btnStartCamera.disabled = true;
+
       await populateCameraList();
       setFrozenUI();
+      const label = usedDeviceId ? 'カメラを切り替えました' : 'カメラを開始しました';
+      log(label);
+      showCameraStatus('カメラ接続 OK','ok',1800);
     }catch(e){
-      console.error(e);
-      log('カメラが許可されなかったか、選択したカメラが利用できませんでした');
+      // 失敗時は既存streamを維持し、再試行できるようボタンを戻す
+      cameraStream = previousStream || null;
+      btnStartCamera.disabled = !!cameraStream;
+      const msg = cameraErrorMessage(e);
+      showCameraStatus(msg,'error');
+      log(`${msg} [${e?.name || 'Error'}]`);
     }
   }
   btnStartCamera.addEventListener('click', ()=> initCamera(currentVideoDeviceId));
@@ -666,7 +871,7 @@
 
   // ===== Undo（draw + text）=====
   const undoStack = [];
-  const maxUndo = 50;
+  const maxUndo = 30;
   function cloneTextItems(arr){ return arr.map(t => ({...t})); }
   function updateUndoButton(){ btnUndo.disabled = undoStack.length===0; }
 
@@ -683,6 +888,7 @@
   let focusEffect = null;
   let focusAnimRaf = null;
   let focusRenderProgress = 1;
+  let focusOpacity = 1;
   function cloneFocusEffect(e){
     if(!e) return null;
     return { ...e, lines: (e.lines||[]).map(l=>({...l})) };
@@ -691,11 +897,20 @@
   // 今のズーム変換
   let zoomTransform = { s:1, tx:0, ty:0 };
 
+  function makeDrawSnapshot(){
+    const c = document.createElement('canvas');
+    c.width = drawCanvas.width;
+    c.height = drawCanvas.height;
+    const cctx = c.getContext('2d', { alpha:true });
+    cctx.drawImage(drawCanvas,0,0);
+    return c;
+  }
   function pushUndo(){
     if (!drawCanvas.width || !drawCanvas.height) return;
     try{
-      const snapshot = drawCtx.getImageData(0,0,drawCanvas.width,drawCanvas.height);
-      undoStack.push({ img:snapshot, texts:cloneTextItems(textItems), selected:selectedTextId, zoomRect: zoomRect ? {...zoomRect} : null, focusEffect: cloneFocusEffect(focusEffect) });
+      // getImageData は高DPI画面で重いため、canvas→canvasコピーで高速化
+      const snapshot = makeDrawSnapshot();
+      undoStack.push({ img:snapshot, texts:cloneTextItems(textItems), selected:selectedTextId, zoomRect: zoomRect ? {...zoomRect} : null, focusEffect: cloneFocusEffect(focusEffect), focusOpacity });
       if (undoStack.length > maxUndo) undoStack.shift();
       updateUndoButton();
     }catch(e){ console.error(e); }
@@ -704,18 +919,24 @@
     if (!undoStack.length) return;
     try{
       const s = undoStack.pop();
-      drawCtx.putImageData(s.img,0,0);
+      drawCtx.save();
+      drawCtx.setTransform(1,0,0,1,0,0);
+      drawCtx.globalCompositeOperation='source-over';
+      drawCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
+      drawCtx.drawImage(s.img,0,0);
+      drawCtx.restore();
       textItems = cloneTextItems(s.texts);
       selectedTextId = s.selected || null;
       zoomRect = s.zoomRect ? {...s.zoomRect} : null;
       focusEffect = cloneFocusEffect(s.focusEffect);
       focusRenderProgress = 1;
+      focusOpacity = Number.isFinite(s.focusOpacity) ? s.focusOpacity : 1;
       cancelFocusAnimation();
       updateZoomTransform();
 
       hideTextEditor();
       uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height);
-      renderFocusEffect(1);
+      renderFocusEffect(1, focusOpacity);
       renderTextLayer();
       log('1つ前の状態に戻しました');
     }catch(e){ console.error(e); }
@@ -752,6 +973,7 @@
     zoomRect = null;
     focusEffect = null;
     focusRenderProgress = 1;
+    focusOpacity = 1;
     cancelFocusAnimation();
     updateZoomTransform();
 
@@ -1326,17 +1548,33 @@
   let lastX=0,lastY=0;
   let shapeDragStart = null;
   let lastShapePos = null;
+  let drawMap = null;
+  let strokeQueue = [];
+  let strokeRaf = 0;
+  let activeDrawPointerId = null;
 
-  function getCanvasPosInternal(e){
+  function refreshDrawMap(){
     const rect = drawCanvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) * (drawCanvas.width / rect.width);
-    const y = (e.clientY - rect.top)  * (drawCanvas.height/ rect.height);
-    return {x,y};
+    drawMap = {
+      left:rect.left, top:rect.top,
+      sx:rect.width ? drawCanvas.width/rect.width : 1,
+      sy:rect.height ? drawCanvas.height/rect.height : 1
+    };
+  }
+  function getCanvasPosFromClient(clientX,clientY){
+    if(!drawMap) refreshDrawMap();
+    return {
+      x:(clientX-drawMap.left)*drawMap.sx,
+      y:(clientY-drawMap.top)*drawMap.sy
+    };
+  }
+  function getCanvasPosInternal(e){
+    return getCanvasPosFromClient(e.clientX,e.clientY);
   }
 
   // テキスト追加
   textLayer.addEventListener('pointerdown', (e) => {
-    if (zoomMode) return;
+    if (zoomMode || focusMode) return;
     if (toolMode !== 'text') return;
 
     const hitText = e.target.closest && e.target.closest('.text-box');
@@ -1350,11 +1588,55 @@
     addTextBoxAt(p.x, p.y);
   }, { passive: false });
 
+  function configureStrokeStyle(){
+    if(toolMode==='eraser'){
+      drawCtx.globalCompositeOperation='destination-out';
+      drawCtx.strokeStyle = 'rgba(0,0,0,1)';
+      drawCtx.lineWidth = eraserSize;
+    }else{
+      const pen = pens[activePenIndex];
+      drawCtx.globalCompositeOperation='source-over';
+      drawCtx.strokeStyle = pen.color;
+      drawCtx.lineWidth = pen.size;
+    }
+    drawCtx.lineCap='round';
+    drawCtx.lineJoin='round';
+  }
+
+  function flushStrokeQueue(){
+    strokeRaf = 0;
+    if(!isDrawing || toolMode==='shape' || !strokeQueue.length) return;
+    const pts = strokeQueue.splice(0, strokeQueue.length);
+    configureStrokeStyle();
+    drawCtx.beginPath();
+    drawCtx.moveTo(lastX,lastY);
+    for(const p of pts) drawCtx.lineTo(p.x,p.y);
+    drawCtx.stroke();
+    const p = pts[pts.length-1];
+    lastX=p.x; lastY=p.y;
+  }
+
+  function scheduleStrokeFlush(){
+    if(!strokeRaf) strokeRaf=requestAnimationFrame(flushStrokeQueue);
+  }
+
+  function queuePointerSamples(e){
+    const samples = (typeof e.getCoalescedEvents==='function') ? e.getCoalescedEvents() : [e];
+    for(const ev of samples){
+      strokeQueue.push(getCanvasPosFromClient(ev.clientX,ev.clientY));
+    }
+    scheduleStrokeFlush();
+  }
+
   function startDraw(e){
     if(zoomMode || focusMode) return;
     if(toolMode==='text') return;
     e.preventDefault();
+    refreshDrawMap();
     pushUndo();
+
+    activeDrawPointerId=e.pointerId;
+    try{ drawCanvas.setPointerCapture(e.pointerId); }catch(_e){}
 
     const pos = getCanvasPosInternal(e);
     if(toolMode==='shape'){
@@ -1366,15 +1648,18 @@
     }
 
     isDrawing = true;
+    strokeQueue.length=0;
     lastX = pos.x; lastY = pos.y;
+    configureStrokeStyle();
   }
 
   function draw(e){
     if(!isDrawing || zoomMode || focusMode) return;
+    if(activeDrawPointerId!==null && e.pointerId!==activeDrawPointerId) return;
     e.preventDefault();
-    const pos = getCanvasPosInternal(e);
 
     if(toolMode==='shape'){
+      const pos = getCanvasPosInternal(e);
       if(!shapeDragStart) return;
       lastShapePos = pos;
       uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height);
@@ -1391,25 +1676,13 @@
       return;
     }
 
-    if(toolMode==='eraser'){
-      drawCtx.strokeStyle = 'rgba(0,0,0,1)';
-      drawCtx.lineWidth = eraserSize;
-    }else{
-      const pen = pens[activePenIndex];
-      drawCtx.strokeStyle = pen.color;
-      drawCtx.lineWidth = pen.size;
-    }
-    drawCtx.lineCap='round';
-    drawCtx.lineJoin='round';
-    drawCtx.beginPath();
-    drawCtx.moveTo(lastX,lastY);
-    drawCtx.lineTo(pos.x,pos.y);
-    drawCtx.stroke();
-    lastX = pos.x; lastY = pos.y;
+    // 高頻度pointermoveを1フレームにまとめる。対応ブラウザではcoalesced eventsで軌跡も滑らかに保持。
+    queuePointerSamples(e);
   }
 
   function endDraw(e){
     if(!isDrawing) return;
+    if(activeDrawPointerId!==null && e.pointerId!==undefined && e.pointerId!==activeDrawPointerId) return;
     e.preventDefault();
 
     if(toolMode==='shape' && shapeDragStart && lastShapePos){
@@ -1432,8 +1705,20 @@
       }
       uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height);
       shapeDragStart=null; lastShapePos=null;
+    }else{
+      // pointerup直前の未描画サンプルを即時反映
+      if(e && Number.isFinite(e.clientX) && Number.isFinite(e.clientY)){
+        const p=getCanvasPosFromClient(e.clientX,e.clientY);
+        if(Math.hypot(p.x-lastX,p.y-lastY)>.15) strokeQueue.push(p);
+      }
+      if(strokeRaf){ cancelAnimationFrame(strokeRaf); strokeRaf=0; }
+      flushStrokeQueue();
     }
 
+    try{ if(activeDrawPointerId!==null) drawCanvas.releasePointerCapture(activeDrawPointerId); }catch(_e){}
+    activeDrawPointerId=null;
+    drawMap=null;
+    strokeQueue.length=0;
     isDrawing=false;
   }
 
@@ -1441,7 +1726,6 @@
   drawCanvas.addEventListener('pointermove', draw, {passive:false});
   drawCanvas.addEventListener('pointerup', endDraw, {passive:false});
   drawCanvas.addEventListener('pointercancel', endDraw, {passive:false});
-  drawCanvas.addEventListener('pointerleave', endDraw, {passive:false});
 
   btnClear.addEventListener('click', ()=>{
     pushUndo();
@@ -1624,11 +1908,12 @@
     return {cx,cy,r,W,H,lines};
   }
 
-  function drawFocusEffectTo(ctx, effect, progress=1, targetW=null, targetH=null){
-    if(!effect || !effect.lines) return;
+  function drawFocusEffectTo(ctx, effect, progress=1, targetW=null, targetH=null, opacity=1){
+    if(!effect || !effect.lines || opacity<=0) return;
     const W=targetW || effect.W, H=targetH || effect.H;
     const sx=W/effect.W, sy=H/effect.H;
     ctx.save();
+    ctx.globalAlpha *= Math.max(0,Math.min(1,opacity));
     ctx.scale(sx,sy);
     const ease=t=>1-Math.pow(1-t,3);
     for(const line of effect.lines){
@@ -1652,25 +1937,46 @@
     ctx.restore();
   }
 
-  function renderFocusEffect(progress=focusRenderProgress){
+  function renderFocusEffect(progress=focusRenderProgress, opacity=focusOpacity){
     clearFocusCanvas();
-    if(!focusEffect) return;
+    if(!focusEffect || opacity<=0) return;
     const rect=cameraWrapper.getBoundingClientRect();
     const dpr=window.devicePixelRatio||1;
     focusCtx.setTransform(dpr,0,0,dpr,0,0);
-    drawFocusEffectTo(focusCtx, focusEffect, progress, rect.width, rect.height);
+    drawFocusEffectTo(focusCtx, focusEffect, progress, rect.width, rect.height, opacity);
   }
 
   function animateFocusEffect(){
     cancelFocusAnimation();
     const start=performance.now();
-    const duration=430;
+    const revealMs=420;
+    const holdMs=650;
+    const fadeMs=2400;
+    const totalMs=revealMs+holdMs+fadeMs;
+    const smooth=t=>t*t*(3-2*t);
     const frame=(now)=>{
-      const p=Math.max(0,Math.min(1,(now-start)/duration));
-      focusRenderProgress = p;
-      renderFocusEffect(p);
-      if(p<1) focusAnimRaf=requestAnimationFrame(frame);
-      else { focusRenderProgress = 1; focusAnimRaf=null; }
+      const elapsed=now-start;
+      if(elapsed < revealMs){
+        focusRenderProgress=Math.max(0,Math.min(1,elapsed/revealMs));
+        focusOpacity=1;
+      }else if(elapsed < revealMs+holdMs){
+        focusRenderProgress=1;
+        focusOpacity=1;
+      }else{
+        focusRenderProgress=1;
+        const f=Math.max(0,Math.min(1,(elapsed-revealMs-holdMs)/fadeMs));
+        focusOpacity=1-smooth(f);
+      }
+      renderFocusEffect(focusRenderProgress,focusOpacity);
+      if(elapsed < totalMs){
+        focusAnimRaf=requestAnimationFrame(frame);
+      }else{
+        focusAnimRaf=null;
+        focusOpacity=0;
+        clearFocusCanvas();
+        // 集中線は一時的な注目効果。消えた後は合成録画にも残さない。
+        focusEffect=null;
+      }
     };
     focusAnimRaf=requestAnimationFrame(frame);
   }
@@ -1701,9 +2007,10 @@
     focusMode=true;
     focusDragStart=null; lastFocusPos=null;
     cancelFocusAnimation();
+    focusEffect = null;
     focusRenderProgress = 1;
+    focusOpacity = 1;
     clearFocusCanvas();
-    if(focusEffect) renderFocusEffect(1);
     focusHint.classList.add('visible');
     btnFocusLines.classList.add('active');
     drawCanvas.style.pointerEvents='none';
@@ -1719,7 +2026,7 @@
     btnFocusLines.classList.remove('active');
     drawCanvas.style.pointerEvents=(toolMode==='text')?'none':'auto';
     textLayer.style.pointerEvents=(toolMode==='text')?'auto':'none';
-    if(restoreEffect){ focusRenderProgress = 1; renderFocusEffect(1); }
+    if(restoreEffect && focusEffect){ focusRenderProgress = 1; focusOpacity = 1; renderFocusEffect(1,1); }
   }
 
   function finalizeFocus(endPos){
@@ -1736,6 +2043,7 @@
     pushUndo();
     focusEffect=makeFocusEffect(focusDragStart.x,focusDragStart.y,Math.min(r,maxR*.86),W,H);
     focusRenderProgress = 0;
+    focusOpacity = 1;
     exitFocusMode(false);
     animateFocusEffect();
     log('集中線を追加しました');
@@ -1843,7 +2151,7 @@
 
     // 集中線は画面座標で重ねる（ズーム後の注目位置をそのまま指せる）
     ctx.setTransform(dprScale,0,0,dprScale,0,0);
-    drawFocusEffectTo(ctx, focusEffect, focusRenderProgress, Wcss, Hcss);
+    drawFocusEffectTo(ctx, focusEffect, focusRenderProgress, Wcss, Hcss, focusOpacity);
   }
 
   function drawCompositeFrame(){
@@ -2187,7 +2495,7 @@
   textLayer.style.pointerEvents = 'none';
 
   // ===== 初期ログ =====
-  log('起動しました。カメラ開始→描画/テキスト/ズーム/集中線が使えます。');
+  log('起動しました。高速描画・即時ボタン説明・フェード集中線に対応しています。');
 </script>
 </body>
 </html>
