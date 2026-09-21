@@ -84,14 +84,44 @@
     #draw-layer,#ui-layer{ position:absolute; inset:0;}
     #draw-layer{ z-index:2; }
     #ui-layer{ z-index:3; }
-    #text-layer{ z-index:4; }
-    #focus-layer{ position:absolute; inset:0; z-index:5; pointer-events:none; touch-action:none; }
+    #shape-layer{ position:absolute; inset:0; z-index:4; pointer-events:none; }
+    #text-layer{ z-index:5; }
+    #focus-layer{ position:absolute; inset:0; z-index:6; pointer-events:none; touch-action:none; }
     #draw-layer{ touch-action:none;}
     #ui-layer{ pointer-events:none;}
 
+    #shape-layer{
+      position:absolute; inset:0;
+      pointer-events:none;
+    }
+    .shape-box{
+      position:absolute; min-width:24px; min-height:24px;
+      pointer-events:auto;
+      user-select:none;
+      touch-action:none;
+    }
+    .shape-box.selected{
+      outline:2px dashed rgba(125,211,252,0.95);
+      outline-offset:2px;
+    }
+    .shape-canvas{
+      width:100%; height:100%; display:block;
+      pointer-events:none;
+    }
+    .shape-resize-handle{
+      position:absolute; width:16px; height:16px;
+      right:-10px; bottom:-10px;
+      border-radius:4px;
+      background:rgba(125,211,252,0.95);
+      border:2px solid rgba(0,0,0,0.8);
+      cursor:nwse-resize;
+      display:none;
+    }
+    .shape-box.selected .shape-resize-handle{ display:block; }
+
     /* テキストDOM（ズーム追従のため cameraInner内） */
     #text-layer{
-      position:absolute; inset:0; z-index:3;
+      position:absolute; inset:0; z-index:5;
       pointer-events:none;
     }
     .text-box{
@@ -325,6 +355,7 @@
       <video id="video" autoplay playsinline></video>
       <canvas id="draw-layer"></canvas>
       <canvas id="ui-layer"></canvas>
+      <div id="shape-layer"></div>
       <div id="text-layer"></div>
     </div>
     <canvas id="focus-layer"></canvas>
@@ -380,9 +411,42 @@
   </div>
 
   <div id="shape-config" class="floating-panel">
-    <div class="panel-title">面（四角）</div>
-    <label>色（塗り＆輪郭 共通） <input type="color" id="shape-color" value="#ffffff"></label>
-    <div style="color:#ccc;margin-top:4px;">※輪郭線は常に10px固定です</div>
+    <div class="panel-title">図形</div>
+    <div style="color:#ccc;margin-bottom:6px;">
+      ・空いている場所をドラッグして追加<br>
+      ・選択後：ドラッグで移動 / 右下ハンドルでサイズ変更<br>
+      ・ここで形・輪郭・塗りを変更できます
+    </div>
+    <label>形
+      <select id="shape-type">
+        <option value="rect">四角</option>
+        <option value="circle">円</option>
+        <option value="speech-round">丸吹き出し</option>
+        <option value="speech-burst">パンク吹き出し</option>
+        <option value="speech-rounded">角丸四角吹き出し</option>
+        <option value="speech-cloud">もこもこ吹き出し</option>
+        <option value="thought">考え吹き出し</option>
+      </select>
+    </label>
+    <label>輪郭色 <input type="color" id="shape-stroke-color" value="#ffffff"></label>
+    <label>輪郭太さ <input type="number" id="shape-stroke-width" min="1" max="30" value="10"></label>
+    <label>塗り色 <input type="color" id="shape-fill-color" value="#ffffff"></label>
+    <label>塗り透明度
+      <input type="range" id="shape-fill-opacity" min="0" max="1" step="0.05" value="0.35">
+      <span id="shape-fill-opacity-value">35%</span>
+    </label>
+    <label>塗りパターン
+      <select id="shape-fill-pattern">
+        <option value="solid">単色</option>
+        <option value="dots">水玉</option>
+        <option value="stripes">ストライプ</option>
+        <option value="diag-stripes">斜めストライプ</option>
+        <option value="grid">格子</option>
+      </select>
+    </label>
+    <div class="panel-row">
+      <button id="shape-delete-btn" class="panel-btn" title="選択中の図形を削除">削除</button>
+    </div>
   </div>
 
   <div id="text-config" class="floating-panel">
@@ -481,6 +545,7 @@
   const cameraWrapper = document.getElementById('camera-wrapper');
   const cameraInner = document.getElementById('camera-inner');
 
+  const shapeLayer = document.getElementById('shape-layer');
   const textLayer = document.getElementById('text-layer');
   const textEditor = document.getElementById('text-editor');
   const textEditorTa = document.getElementById('text-editor-ta');
@@ -516,7 +581,14 @@
   const toolTextBtn  = document.getElementById('tool-text');
 
   const shapeConfigPanel = document.getElementById('shape-config');
-  const shapeColorInput = document.getElementById('shape-color');
+  const shapeTypeSelect = document.getElementById('shape-type');
+  const shapeStrokeColorInput = document.getElementById('shape-stroke-color');
+  const shapeStrokeWidthInput = document.getElementById('shape-stroke-width');
+  const shapeFillColorInput = document.getElementById('shape-fill-color');
+  const shapeFillOpacityInput = document.getElementById('shape-fill-opacity');
+  const shapeFillOpacityValue = document.getElementById('shape-fill-opacity-value');
+  const shapeFillPatternSelect = document.getElementById('shape-fill-pattern');
+  const shapeDeleteBtn = document.getElementById('shape-delete-btn');
 
   const textConfigPanel = document.getElementById('text-config');
   const textColorInput = document.getElementById('text-color');
@@ -873,6 +945,7 @@
   const undoStack = [];
   const maxUndo = 30;
   function cloneTextItems(arr){ return arr.map(t => ({...t})); }
+  function cloneShapeItems(arr){ return arr.map(s => ({...s})); }
   function updateUndoButton(){ btnUndo.disabled = undoStack.length===0; }
 
   // ===== ズーム（先に宣言してTDZ回避）=====
@@ -911,7 +984,7 @@
     try{
       // getImageData は高DPI画面で重いため、canvas→canvasコピーで高速化
       const snapshot = makeDrawSnapshot();
-      undoStack.push({ img:snapshot, texts:cloneTextItems(textItems), selected:selectedTextId, zoomRect: zoomRect ? {...zoomRect} : null, focusEffect: cloneFocusEffect(focusEffect), focusOpacity });
+      undoStack.push({ img:snapshot, texts:cloneTextItems(textItems), shapes:cloneShapeItems(shapeItems), selected:selectedTextId, selectedShape:selectedShapeId, zoomRect: zoomRect ? {...zoomRect} : null, focusEffect: cloneFocusEffect(focusEffect), focusOpacity });
       if (undoStack.length > maxUndo) undoStack.shift();
       updateUndoButton();
     }catch(e){ console.error(e); }
@@ -927,7 +1000,9 @@
       drawCtx.drawImage(s.img,0,0);
       drawCtx.restore();
       textItems = cloneTextItems(s.texts);
+      shapeItems = cloneShapeItems(s.shapes || []);
       selectedTextId = s.selected || null;
+      selectedShapeId = s.selectedShape || null;
       zoomRect = s.zoomRect ? {...s.zoomRect} : null;
       focusEffect = cloneFocusEffect(s.focusEffect);
       focusRenderProgress = 1;
@@ -939,6 +1014,7 @@
       hideTextEditor();
       uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height);
       renderFocusEffect(1, focusOpacity, 0);
+      renderShapeLayer();
       renderTextLayer();
       log('1つ前の状態に戻しました');
     }catch(e){ console.error(e); }
@@ -960,10 +1036,7 @@
       c.style.width = width+'px';
       c.style.height = height+'px';
     });
-    if (toolMode !== 'text') {
-      drawCanvas.style.pointerEvents = 'auto';
-      textLayer.style.pointerEvents = 'none';
-    }
+    updateOverlayPointerModes();
 
     drawCtx.setTransform(1,0,0,1,0,0);
     uiCtx.setTransform(1,0,0,1,0,0);
@@ -1010,23 +1083,54 @@
   const eraserSizeInput = document.getElementById('eraser-size');
   let openPenConfigIndex = null;
 
-  let shapeColor = '#ffffff';
-  const SHAPE_LINE_WIDTH = 10;
+  let shapeDefaults = {
+    type:'rect',
+    strokeColor:'#ffffff',
+    strokeWidth:10,
+    fillColor:'#ffffff',
+    fillOpacity:0.35,
+    fillPattern:'solid'
+  };
   function updateShapeIconColor(){
-    toolShapeBtn.style.background = shapeColor;
-    const r = parseInt(shapeColor.slice(1,3),16);
-    const g = parseInt(shapeColor.slice(3,5),16);
-    const b = parseInt(shapeColor.slice(5,7),16);
+    toolShapeBtn.style.background = shapeDefaults.fillColor;
+    const r = parseInt(shapeDefaults.fillColor.slice(1,3),16);
+    const g = parseInt(shapeDefaults.fillColor.slice(3,5),16);
+    const b = parseInt(shapeDefaults.fillColor.slice(5,7),16);
     const y = 0.299*r + 0.587*g + 0.114*b;
     toolShapeBtn.style.color = (y>160) ? '#000' : '#fff';
   }
-  updateShapeIconColor();
-  shapeColorInput.value = shapeColor;
-  shapeColorInput.addEventListener('input', ()=>{
-    shapeColor = shapeColorInput.value;
+  function syncShapeOpacityLabel(v){
+    shapeFillOpacityValue.textContent = `${Math.round((Number(v)||0)*100)}%`;
+  }
+  function syncShapePanel(){
+    const s = getSelectedShape() || shapeDefaults;
+    shapeTypeSelect.value = s.type;
+    shapeStrokeColorInput.value = s.strokeColor;
+    shapeStrokeWidthInput.value = s.strokeWidth;
+    shapeFillColorInput.value = s.fillColor;
+    shapeFillOpacityInput.value = s.fillOpacity;
+    syncShapeOpacityLabel(s.fillOpacity);
+    shapeFillPatternSelect.value = s.fillPattern;
+    shapeDeleteBtn.disabled = !getSelectedShape();
+  }
+  function applyShapePanelToSelected(prop, value){
+    shapeDefaults[prop] = value;
+    const s = getSelectedShape();
+    if(s){
+      s[prop] = value;
+      renderShapeLayer();
+    }
     updateShapeIconColor();
-    log(`面の色変更: ${shapeColor}`);
-  });
+    syncShapePanel();
+  }
+  updateShapeIconColor();
+  syncShapePanel();
+  shapeTypeSelect.addEventListener('change', ()=>{ applyShapePanelToSelected('type', shapeTypeSelect.value); log(`図形の形: ${shapeTypeSelect.options[shapeTypeSelect.selectedIndex].text}`); });
+  shapeStrokeColorInput.addEventListener('input', ()=>{ applyShapePanelToSelected('strokeColor', shapeStrokeColorInput.value); log(`図形の輪郭色: ${shapeStrokeColorInput.value}`); });
+  shapeStrokeWidthInput.addEventListener('input', ()=>{ applyShapePanelToSelected('strokeWidth', Math.max(1, Number(shapeStrokeWidthInput.value)||1)); log(`図形の輪郭太さ: ${shapeStrokeWidthInput.value}px`); });
+  shapeFillColorInput.addEventListener('input', ()=>{ applyShapePanelToSelected('fillColor', shapeFillColorInput.value); log(`図形の塗り色: ${shapeFillColorInput.value}`); });
+  shapeFillOpacityInput.addEventListener('input', ()=>{ const v=Math.max(0,Math.min(1, Number(shapeFillOpacityInput.value)||0)); applyShapePanelToSelected('fillOpacity', v); syncShapeOpacityLabel(v); });
+  shapeFillPatternSelect.addEventListener('change', ()=>{ applyShapePanelToSelected('fillPattern', shapeFillPatternSelect.value); log(`図形の塗りパターン: ${shapeFillPatternSelect.options[shapeFillPatternSelect.selectedIndex].text}`); });
 
   function showPanelUnder(panel, anchorEl){
     if (!panel || !anchorEl) return;
@@ -1075,6 +1179,18 @@
     });
   }
 
+  function updateOverlayPointerModes(){
+    if(zoomMode || focusMode){
+      drawCanvas.style.pointerEvents='none';
+      textLayer.style.pointerEvents='none';
+      shapeLayer.style.pointerEvents='none';
+      return;
+    }
+    drawCanvas.style.pointerEvents = (toolMode==='pen' || toolMode==='eraser') ? 'auto' : 'none';
+    textLayer.style.pointerEvents = (toolMode==='text') ? 'auto' : 'none';
+    shapeLayer.style.pointerEvents = (toolMode==='shape') ? 'auto' : 'none';
+  }
+
   function setToolMode(mode){
     if(focusMode) exitFocusMode(true);
     if(zoomMode) exitZoomMode();
@@ -1084,6 +1200,7 @@
     toolTextBtn.classList.toggle('active', mode==='text');
     if (mode==='eraser') drawCtx.globalCompositeOperation='destination-out';
     else drawCtx.globalCompositeOperation='source-over';
+    updateOverlayPointerModes();
   }
 
   setToolMode('pen');
@@ -1143,10 +1260,12 @@
     if (will){
       setToolMode('shape');
       showPanelUnder(shapeConfigPanel, toolShapeBtn);
-      log('ツール: 面（四角）');
+      syncShapePanel();
+      log('ツール: 図形');
     }else{
       setToolMode('pen');
       log('ツール: ペン');
+      deselectShape();
     }
   });
   toolTextBtn.addEventListener('click', ()=>{
@@ -1157,14 +1276,10 @@
       showPanelUnder(textConfigPanel, toolTextBtn);
       syncTextPanelWithSelected();
       log('ツール: テキスト（クリックでボックス追加）');
-      textLayer.style.pointerEvents = 'auto';
-      drawCanvas.style.pointerEvents = 'none';
       updateSelectionVisual();
     }else{
       setToolMode('pen');
       log('ツール: ペン');
-      textLayer.style.pointerEvents = 'none';
-      drawCanvas.style.pointerEvents = 'auto';
       deselectText();
     }
   });
@@ -1541,16 +1656,311 @@
     const path = e.composedPath ? e.composedPath() : [];
     const hitText = path.some(p=> p && p.classList && p.classList.contains('text-box'));
     const hitEditor = path.some(p=> p && p.id==='text-editor-ta');
+    const hitShape = path.some(p=> p && p.classList && p.classList.contains('shape-box'));
     if(!hitText && !hitEditor){
       if(toolMode!=='text') deselectText();
     }
+    if(!hitShape){
+      deselectShape();
+    }
   }, {capture:true});
 
-  // ===== 描画/面 =====
+  // ===== 図形 =====
+  let shapeItems = [];
+  let selectedShapeId = null;
+  let isDraggingShape = false;
+  let isResizingShape = false;
+  let activeShapePointerId = null;
+  let shapeDragOffset = {x:0,y:0};
+  let shapeResizeStart = null;
+  let isCreatingShape = false;
+  let shapeCreateStart = null;
+  let shapeCreateCurrent = null;
+
+  function getSelectedShape(){ return shapeItems.find(s=>s.id===selectedShapeId) || null; }
+  function deselectShape(){
+    selectedShapeId = null;
+    renderShapeLayer();
+    syncShapePanel();
+  }
+  function roundedRectPath(ctx, x, y, w, h, r){
+    const rr = Math.max(0, Math.min(r, w/2, h/2));
+    ctx.beginPath();
+    ctx.moveTo(x+rr, y);
+    ctx.arcTo(x+w, y, x+w, y+h, rr);
+    ctx.arcTo(x+w, y+h, x, y+h, rr);
+    ctx.arcTo(x, y+h, x, y, rr);
+    ctx.arcTo(x, y, x+w, y, rr);
+    ctx.closePath();
+  }
+  function traceCloudBody(ctx, w, h, pad){
+    const cx=w*0.5, cy=h*0.42;
+    const rx=Math.max(10, w*0.32-pad*0.2), ry=Math.max(10, h*0.22-pad*0.2);
+    const n=10;
+    const pts=[];
+    for(let i=0;i<n;i++){
+      const ang=-Math.PI/2 + (Math.PI*2*i/n);
+      const rr=1 + ((i%2===0)?0.12:-0.03);
+      pts.push({ x:cx+Math.cos(ang)*rx*rr, y:cy+Math.sin(ang)*ry*rr });
+    }
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for(let i=0;i<n;i++){
+      const p=pts[i], q=pts[(i+1)%n];
+      const mx=(p.x+q.x)/2, my=(p.y+q.y)/2;
+      ctx.quadraticCurveTo(p.x,p.y,mx,my);
+    }
+    ctx.closePath();
+  }
+  function traceShapePath(ctx, type, w, h, strokeWidth){
+    const pad = Math.max(2, strokeWidth/2 + 2);
+    switch(type){
+      case 'circle':
+        ctx.beginPath();
+        ctx.ellipse(w/2, h/2, Math.max(6,w/2-pad), Math.max(6,h/2-pad), 0, 0, Math.PI*2);
+        ctx.closePath();
+        break;
+      case 'speech-round':
+        ctx.beginPath();
+        ctx.ellipse(w*0.5, h*0.42, Math.max(10,w*0.36-pad*0.2), Math.max(10,h*0.26-pad*0.2), 0, 0, Math.PI*2);
+        ctx.moveTo(w*0.40, h*0.62); ctx.lineTo(w*0.28, h*0.88); ctx.lineTo(w*0.52, h*0.68); ctx.closePath();
+        break;
+      case 'speech-rounded':
+        roundedRectPath(ctx, pad, pad, Math.max(10,w-pad*2), Math.max(10,h*0.72-pad*1.2), Math.min(w,h)*0.12);
+        ctx.moveTo(w*0.58, h*0.72); ctx.lineTo(w*0.48, h*0.92); ctx.lineTo(w*0.72, h*0.72); ctx.closePath();
+        break;
+      case 'speech-burst': {
+        const cx=w*0.5, cy=h*0.42, rx=Math.max(12,w*0.37-pad*0.2), ry=Math.max(12,h*0.27-pad*0.2);
+        const spikes=18;
+        ctx.beginPath();
+        for(let i=0;i<spikes;i++){
+          const ang=-Math.PI/2 + (Math.PI*2*i/spikes);
+          const rr=(i%2===0)?1.0:0.78;
+          const x=cx+Math.cos(ang)*rx*rr;
+          const y=cy+Math.sin(ang)*ry*rr;
+          if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        }
+        ctx.closePath();
+        ctx.moveTo(w*0.36, h*0.65); ctx.lineTo(w*0.24, h*0.90); ctx.lineTo(w*0.46, h*0.70); ctx.closePath();
+        break; }
+      case 'speech-cloud':
+        traceCloudBody(ctx, w, h, pad);
+        ctx.moveTo(w*0.36, h*0.67); ctx.arc(w*0.33, h*0.74, Math.max(5,Math.min(w,h)*0.06), 0, Math.PI*2);
+        ctx.closePath();
+        break;
+      case 'thought':
+        traceCloudBody(ctx, w, h, pad);
+        ctx.moveTo(w*0.34, h*0.78); ctx.arc(w*0.34, h*0.78, Math.max(4,Math.min(w,h)*0.06), 0, Math.PI*2);
+        ctx.moveTo(w*0.24, h*0.92); ctx.arc(w*0.24, h*0.92, Math.max(3,Math.min(w,h)*0.038), 0, Math.PI*2);
+        break;
+      case 'rect':
+      default:
+        ctx.beginPath();
+        ctx.rect(pad, pad, Math.max(10,w-pad*2), Math.max(10,h-pad*2));
+        ctx.closePath();
+    }
+  }
+  function createShapePattern(ctx, kind, color){
+    const c=document.createElement('canvas');
+    c.width=24; c.height=24;
+    const p=c.getContext('2d');
+    p.clearRect(0,0,24,24);
+    p.strokeStyle=color;
+    p.fillStyle=color;
+    p.lineWidth=3;
+    if(kind==='dots'){
+      p.beginPath(); p.arc(6,6,3,0,Math.PI*2); p.fill();
+      p.beginPath(); p.arc(18,18,3,0,Math.PI*2); p.fill();
+    }else if(kind==='stripes'){
+      p.fillRect(2,0,5,24); p.fillRect(14,0,5,24);
+    }else if(kind==='diag-stripes'){
+      p.translate(12,12); p.rotate(-Math.PI/4); p.translate(-12,-12);
+      p.fillRect(-4,4,6,24); p.fillRect(10,4,6,24); p.fillRect(24,4,6,24);
+    }else if(kind==='grid'){
+      p.fillRect(0,4,24,3); p.fillRect(0,16,24,3); p.fillRect(4,0,3,24); p.fillRect(16,0,3,24);
+    }else{
+      return color;
+    }
+    return ctx.createPattern(c, 'repeat') || color;
+  }
+  function drawShapeLocal(ctx, item, w, h, opts={}){
+    const strokeWidth=Math.max(1, Number(item.strokeWidth)||1);
+    const type=item.type || 'rect';
+    ctx.save();
+    ctx.lineWidth = strokeWidth;
+    ctx.strokeStyle = item.strokeColor || '#ffffff';
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    if(opts.previewDashed) ctx.setLineDash([6,4]);
+    traceShapePath(ctx, type, w, h, strokeWidth);
+    if((Number(item.fillOpacity)||0) > 0){
+      ctx.save();
+      ctx.globalAlpha *= Math.max(0, Math.min(1, Number(item.fillOpacity)||0));
+      ctx.fillStyle = createShapePattern(ctx, item.fillPattern || 'solid', item.fillColor || '#ffffff');
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+  function paintShapeCanvas(canvas, item){
+    const w=Math.max(24, Math.round(item.w));
+    const h=Math.max(24, Math.round(item.h));
+    const dpr=window.devicePixelRatio||1;
+    canvas.width = Math.max(1, Math.round(w*dpr));
+    canvas.height = Math.max(1, Math.round(h*dpr));
+    canvas.style.width = w+'px';
+    canvas.style.height = h+'px';
+    const ctx=canvas.getContext('2d');
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,w,h);
+    drawShapeLocal(ctx, item, w, h);
+  }
+  function updateShapeSelectionVisual(){
+    const boxes = shapeLayer.querySelectorAll('.shape-box');
+    boxes.forEach(b=> b.classList.toggle('selected', b.dataset.id===selectedShapeId));
+  }
+  function selectShapeSoft(id){
+    selectedShapeId = id;
+    updateShapeSelectionVisual();
+    syncShapePanel();
+    showPanelUnder(shapeConfigPanel, toolShapeBtn);
+  }
+  function renderShapeLayer(){
+    shapeLayer.innerHTML='';
+    for(const item of shapeItems){
+      const box=document.createElement('div');
+      box.className='shape-box';
+      box.dataset.id=item.id;
+      box.style.left=item.x+'px';
+      box.style.top=item.y+'px';
+      box.style.width=Math.max(24,item.w)+'px';
+      box.style.height=Math.max(24,item.h)+'px';
+
+      const canv=document.createElement('canvas');
+      canv.className='shape-canvas';
+      box.appendChild(canv);
+      const handle=document.createElement('div');
+      handle.className='shape-resize-handle';
+      handle.title='サイズ変更';
+      box.appendChild(handle);
+      paintShapeCanvas(canv, item);
+
+      box.addEventListener('pointerdown', (e)=>{
+        if(zoomMode || focusMode || toolMode!=='shape') return;
+        e.stopPropagation();
+        e.preventDefault();
+        selectShapeSoft(item.id);
+        pushUndo();
+        activeShapePointerId = e.pointerId;
+        const p=clientToInnerCss(e.clientX, e.clientY);
+        if(e.target.classList.contains('shape-resize-handle')){
+          isResizingShape=true; isDraggingShape=false;
+          shapeResizeStart={ id:item.id, startX:p.x, startY:p.y, startW:item.w, startH:item.h };
+        }else{
+          isDraggingShape=true; isResizingShape=false;
+          shapeDragOffset.x = p.x - item.x;
+          shapeDragOffset.y = p.y - item.y;
+        }
+        try{ if(box.setPointerCapture) box.setPointerCapture(e.pointerId); }catch(_e){}
+      });
+      box.addEventListener('pointermove', (e)=>{
+        if(toolMode!=='shape' || e.pointerId!==activeShapePointerId) return;
+        if(!isDraggingShape && !isResizingShape) return;
+        const s = shapeItems.find(t=>t.id===box.dataset.id);
+        if(!s) return;
+        const p=clientToInnerCss(e.clientX, e.clientY);
+        if(isDraggingShape){
+          s.x = Math.max(-500, Math.min(p.x-shapeDragOffset.x, cameraWrapper.clientWidth+500));
+          s.y = Math.max(-500, Math.min(p.y-shapeDragOffset.y, cameraWrapper.clientHeight+500));
+          box.style.left = s.x+'px'; box.style.top = s.y+'px';
+        }
+        if(isResizingShape && shapeResizeStart && shapeResizeStart.id===s.id){
+          s.w = Math.max(24, shapeResizeStart.startW + (p.x-shapeResizeStart.startX));
+          s.h = Math.max(24, shapeResizeStart.startH + (p.y-shapeResizeStart.startY));
+          box.style.width=s.w+'px'; box.style.height=s.h+'px';
+          paintShapeCanvas(canv, s);
+        }
+      });
+      function endShapeOp(e){
+        if(activeShapePointerId!==null && e.pointerId!==activeShapePointerId) return;
+        isDraggingShape=false; isResizingShape=false; activeShapePointerId=null; shapeResizeStart=null;
+      }
+      box.addEventListener('pointerup', endShapeOp);
+      box.addEventListener('pointercancel', endShapeOp);
+
+      shapeLayer.appendChild(box);
+    }
+    updateShapeSelectionVisual();
+    syncShapePanel();
+  }
+  shapeDeleteBtn.addEventListener('click', ()=>{
+    const s=getSelectedShape();
+    if(!s) return;
+    pushUndo();
+    shapeItems = shapeItems.filter(it=>it.id!==s.id);
+    selectedShapeId = null;
+    renderShapeLayer();
+    log('図形を削除しました');
+  });
+  function previewShapeCreation(start, end){
+    clearUiCanvas();
+    if(!start || !end) return;
+    const x=Math.min(start.x,end.x), y=Math.min(start.y,end.y);
+    const w=Math.abs(end.x-start.x), h=Math.abs(end.y-start.y);
+    const dpr=window.devicePixelRatio||1;
+    uiCtx.setTransform(dpr,0,0,dpr,0,0);
+    const temp={ ...shapeDefaults, x, y, w:Math.max(24,w), h:Math.max(24,h) };
+    uiCtx.save();
+    uiCtx.translate(x,y);
+    drawShapeLocal(uiCtx, temp, Math.max(24,w), Math.max(24,h), { previewDashed:true });
+    uiCtx.restore();
+  }
+  shapeLayer.addEventListener('pointerdown', (e)=>{
+    if(zoomMode || focusMode || toolMode!=='shape') return;
+    if(e.target.closest && e.target.closest('.shape-box')) return;
+    e.preventDefault();
+    const p=clientToInnerCss(e.clientX, e.clientY);
+    pushUndo();
+    isCreatingShape=true;
+    activeShapePointerId=e.pointerId;
+    shapeCreateStart=p;
+    shapeCreateCurrent=p;
+    try{ if(shapeLayer.setPointerCapture) shapeLayer.setPointerCapture(e.pointerId); }catch(_e){}
+    previewShapeCreation(shapeCreateStart, shapeCreateCurrent);
+  }, {passive:false});
+  shapeLayer.addEventListener('pointermove', (e)=>{
+    if(toolMode!=='shape' || !isCreatingShape) return;
+    if(activeShapePointerId!==null && e.pointerId!==activeShapePointerId) return;
+    e.preventDefault();
+    shapeCreateCurrent = clientToInnerCss(e.clientX, e.clientY);
+    previewShapeCreation(shapeCreateStart, shapeCreateCurrent);
+  }, {passive:false});
+  function finishShapeCreation(e){
+    if(!isCreatingShape) return;
+    if(activeShapePointerId!==null && e.pointerId!==undefined && e.pointerId!==activeShapePointerId) return;
+    e.preventDefault();
+    const end = shapeCreateCurrent || clientToInnerCss(e.clientX, e.clientY);
+    clearUiCanvas();
+    const x=Math.min(shapeCreateStart.x,end.x), y=Math.min(shapeCreateStart.y,end.y);
+    const w=Math.abs(end.x-shapeCreateStart.x), h=Math.abs(end.y-shapeCreateStart.y);
+    if(w>=8 && h>=8){
+      const item={ id:newId(), x, y, w:Math.max(24,w), h:Math.max(24,h), ...shapeDefaults };
+      shapeItems.push(item);
+      selectedShapeId=item.id;
+      renderShapeLayer();
+      showPanelUnder(shapeConfigPanel, toolShapeBtn);
+      log('図形を追加しました');
+    }
+    isCreatingShape=false; activeShapePointerId=null; shapeCreateStart=null; shapeCreateCurrent=null;
+    try{ shapeLayer.releasePointerCapture && shapeLayer.releasePointerCapture(e.pointerId); }catch(_e){}
+  }
+  shapeLayer.addEventListener('pointerup', finishShapeCreation, {passive:false});
+  shapeLayer.addEventListener('pointercancel', finishShapeCreation, {passive:false});
+
+  // ===== 描画 =====
   let isDrawing = false;
   let lastX=0,lastY=0;
-  let shapeDragStart = null;
-  let lastShapePos = null;
   let drawMap = null;
   let strokeQueue = [];
   let strokeRaf = 0;
@@ -1642,14 +2052,6 @@
     try{ drawCanvas.setPointerCapture(e.pointerId); }catch(_e){}
 
     const pos = getCanvasPosInternal(e);
-    if(toolMode==='shape'){
-      isDrawing = true;
-      shapeDragStart = pos;
-      lastShapePos = pos;
-      uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height);
-      return;
-    }
-
     isDrawing = true;
     strokeQueue.length=0;
     lastX = pos.x; lastY = pos.y;
@@ -1661,24 +2063,6 @@
     if(activeDrawPointerId!==null && e.pointerId!==activeDrawPointerId) return;
     e.preventDefault();
 
-    if(toolMode==='shape'){
-      const pos = getCanvasPosInternal(e);
-      if(!shapeDragStart) return;
-      lastShapePos = pos;
-      uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height);
-      uiCtx.save();
-      uiCtx.strokeStyle = shapeColor;
-      uiCtx.lineWidth = SHAPE_LINE_WIDTH;
-      uiCtx.setLineDash([6,4]);
-      const x = Math.min(shapeDragStart.x, pos.x);
-      const y = Math.min(shapeDragStart.y, pos.y);
-      const w = Math.abs(pos.x - shapeDragStart.x);
-      const h = Math.abs(pos.y - shapeDragStart.y);
-      uiCtx.strokeRect(x,y,w,h);
-      uiCtx.restore();
-      return;
-    }
-
     // 高頻度pointermoveを1フレームにまとめる。対応ブラウザではcoalesced eventsで軌跡も滑らかに保持。
     queuePointerSamples(e);
   }
@@ -1688,27 +2072,7 @@
     if(activeDrawPointerId!==null && e.pointerId!==undefined && e.pointerId!==activeDrawPointerId) return;
     e.preventDefault();
 
-    if(toolMode==='shape' && shapeDragStart && lastShapePos){
-      const x = Math.min(shapeDragStart.x, lastShapePos.x);
-      const y = Math.min(shapeDragStart.y, lastShapePos.y);
-      const w = Math.abs(lastShapePos.x - shapeDragStart.x);
-      const h = Math.abs(lastShapePos.y - shapeDragStart.y);
-      const minSize=4;
-      if(w>=minSize && h>=minSize){
-        const prevOp = drawCtx.globalCompositeOperation;
-        drawCtx.globalCompositeOperation='source-over';
-        drawCtx.save();
-        drawCtx.fillStyle = shapeColor;
-        drawCtx.strokeStyle = shapeColor;
-        drawCtx.lineWidth = SHAPE_LINE_WIDTH;
-        drawCtx.fillRect(x,y,w,h);
-        drawCtx.strokeRect(x,y,w,h);
-        drawCtx.restore();
-        drawCtx.globalCompositeOperation = prevOp;
-      }
-      uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height);
-      shapeDragStart=null; lastShapePos=null;
-    }else{
+    {
       // pointerup直前の未描画サンプルを即時反映
       if(e && Number.isFinite(e.clientX) && Number.isFinite(e.clientY)){
         const p=getCanvasPosFromClient(e.clientX,e.clientY);
@@ -1734,11 +2098,14 @@
     pushUndo();
     drawCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
     uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height);
+    shapeItems = [];
+    selectedShapeId = null;
+    renderShapeLayer();
     focusEffect = null;
     focusRenderProgress = 1;
     cancelFocusAnimation();
     focusCtx.clearRect(0,0,focusCanvas.width,focusCanvas.height);
-    log('描画と集中線をクリアしました（テキストは残ります）');
+    log('描画・図形・集中線をクリアしました（テキストは残ります）');
   });
 
   function clearUiCanvas(){ uiCtx.clearRect(0,0,uiCanvas.width,uiCanvas.height); }
@@ -1773,8 +2140,7 @@
     zoomDragStart=null; lastZoomPos=null;
     clearUiCanvas();
     zoomHint.classList.add('visible');
-    drawCanvas.style.pointerEvents='none';
-    textLayer.style.pointerEvents='none';
+    updateOverlayPointerModes();
     hideTextEditor();
     log('ズーム領域選択モード：映像上をドラッグしてください');
   }
@@ -1784,8 +2150,7 @@
     zoomDragStart=null; lastZoomPos=null;
     clearUiCanvas();
     zoomHint.classList.remove('visible');
-    drawCanvas.style.pointerEvents = (toolMode==='text') ? 'none':'auto';
-    textLayer.style.pointerEvents = (toolMode==='text') ? 'auto':'none';
+    updateOverlayPointerModes();
   }
 
   btnZoomSelect.addEventListener('click', ()=>{
@@ -2023,8 +2388,7 @@
     clearFocusCanvas();
     focusHint.classList.add('visible');
     btnFocusLines.classList.add('active');
-    drawCanvas.style.pointerEvents='none';
-    textLayer.style.pointerEvents='none';
+    updateOverlayPointerModes();
     hideTextEditor();
     log('ここ見て！：中心から外へドラッグして円形範囲を指定してください');
   }
@@ -2034,8 +2398,7 @@
     focusDragStart=null; lastFocusPos=null;
     focusHint.classList.remove('visible');
     btnFocusLines.classList.remove('active');
-    drawCanvas.style.pointerEvents=(toolMode==='text')?'none':'auto';
-    textLayer.style.pointerEvents=(toolMode==='text')?'auto':'none';
+    updateOverlayPointerModes();
     if(restoreEffect && focusEffect){ focusRenderProgress = 1; focusOpacity = 1; focusRetract = 0; renderFocusEffect(1,1,0); }
   }
 
@@ -2156,13 +2519,14 @@
     ctx.drawImage(video,0,0,vw,vh);
     ctx.restore();
 
-    // draw drawing layer and texts (camera-inner座標＝ズーム追従)
+    // draw drawing layer, shapes and texts (camera-inner座標＝ズーム追従)
     ctx.drawImage(drawCanvas, 0,0,drawCanvas.width,drawCanvas.height, 0,0, Wcss,Hcss);
+    drawShapeItemsOnComposite(ctx);
     drawTextItemsOnComposite(ctx);
 
     // 集中線は画面座標で重ねる（ズーム後の注目位置をそのまま指せる）
     ctx.setTransform(dprScale,0,0,dprScale,0,0);
-    drawFocusEffectTo(ctx, focusEffect, focusRenderProgress, Wcss, Hcss, focusOpacity);
+    drawFocusEffectTo(ctx, focusEffect, focusRenderProgress, Wcss, Hcss, focusOpacity, focusRetract);
   }
 
   function drawCompositeFrame(){
@@ -2502,11 +2866,10 @@
   btnStopTl.disabled = true;
 
   // ===== ズーム時のポインタ制御 =====
-  // textLayer pointer default
-  textLayer.style.pointerEvents = 'none';
+  updateOverlayPointerModes();
 
   // ===== 初期ログ =====
-  log('起動しました。高速描画・即時ボタン説明・フェード集中線に対応しています。');
+  log('起動しました。高速描画・即時ボタン説明・吸い込み集中線・多図形編集に対応しています。');
 </script>
 </body>
 </html>
